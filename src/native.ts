@@ -604,6 +604,9 @@ async function createNodeBindings(libPath: string): Promise<NativeBindings> {
   const flStringFreeRaw = lib.func('void fl_string_free(void* value)');
   const HeapStr = koffi.disposable('HeapStr', 'str', (ptr: any) => { flStringFreeRaw(ptr); });
 
+  // Canonical callback signature (matches FL_OnSnapshotCallback in
+  // firelite.h). Kept as documentation; register() below takes the
+  // typedef NAME as a string, not this proto object.
   const OnSnapshotCB = koffi.proto('void FL_OnSnapshotCallback(const char *collection, const char *path, int32_t kind, void *user_data)');
 
   const fn = {
@@ -815,7 +818,9 @@ async function createNodeBindings(libPath: string): Promise<NativeBindings> {
 
     engineWatch: (engine, collection, callback) => {
       const wrapper = (c: string, p: string, kind: number, _user: any) => callback(c, p, kind);
-      return fn.fl_engine_watch(engine, collection, koffi.register(wrapper, OnSnapshotCB), null);
+      // ponytail: koffi.register takes the typedef NAME as a string here —
+      // passing the proto object itself throws "Unexpected ... type".
+      return fn.fl_engine_watch(engine, collection, koffi.register(wrapper, 'FL_OnSnapshotCallback *'), null);
     },
     watchFree: (watch) => fn.fl_watch_free(watch),
 

@@ -66,6 +66,12 @@ export class FireLiteConfig {
     this._handle = native.configNew();
   }
 
+  /** Reuse these bindings instead of loading the DLL twice in one process
+   * (koffi rejects duplicate type registration on a second load). */
+  getNativeBindings(): NativeBindings {
+    return this._native;
+  }
+
   setDurability(mode: DurabilityMode): this {
     this._native.configSetDurability(this._handle, mode);
     return this;
@@ -331,7 +337,9 @@ export class FireLiteClient {
   }
 
   static async open(path: string, options?: FireLiteClientOptions): Promise<FireLiteClient> {
-    const native = options?.native ?? (await loadNativeBindings(options?.libraryPath));
+    const native = options?.native
+      ?? options?.config?.getNativeBindings()
+      ?? (await loadNativeBindings(options?.libraryPath));
 
     let engine: unknown;
     if (options?.config) {
