@@ -18,10 +18,10 @@ import {
 const repoRoot = path.resolve(import.meta.dir, "..", "..");
 const libName =
   process.platform === "win32"
-    ? "firelite.dll"
+    ? "hakodb.dll"
     : process.platform === "darwin"
-      ? "libfirelite.dylib"
-      : "libfirelite.so";
+      ? "libhakodb.dylib"
+      : "libhakodb.so";
 const libraryPath = path.join(repoRoot, "native", libName);
 
 async function main(): Promise<void> {
