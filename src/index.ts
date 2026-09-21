@@ -33,6 +33,6 @@
 
 export * from './client';
 export * from './native';
-// ponytail: the Tauri client moved to the standalone @firelite/tauri
-// package (firelite-tauri-ts repo) with the gateway split — it shares
+// ponytail: the Tauri client lives in the standalone @hakodb/tauri
+// package with the gateway split — it shares
 // type names with the native client, so it was never merged here anyway.

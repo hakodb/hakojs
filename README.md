@@ -2,8 +2,8 @@
 
 JavaScript/TypeScript SDK for HakoDB:
 high-level client (`client.ts`: `HakoClient`, `HakoConfig`) and native
-FFI bindings over koffi/Bun (`native.ts`). The Tauri client lives in
-`@hakodb/tauri` (`firelite-tauri-ts` repo, renaming with repo creation).
+FFI bindings over koffi/Bun (`native.ts`). Tauri lives in `@hakodb/tauri`
+(sibling dir, renaming with repo creation).
 
 ## Compatibility
 

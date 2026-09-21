@@ -3,7 +3,7 @@
 type Handle = any;
 
 /**
- * matches HK_OnSnapshotCallback in firelite.h
+ * matches HK_OnSnapshotCallback in hako.h
  */
 export type WatchCallback = (collection: string, path: string, kind: number) => void;
 
