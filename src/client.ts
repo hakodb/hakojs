@@ -1,7 +1,7 @@
 import { loadNativeBindings, type NativeBindings, type WatchCallback } from './native';
 
 // 1. UPDATED: Recursive Type Definitions to support Nested Maps and Arrays
-// export type Primitive = string | number | boolean | null | Uint8Array | Date | FireLiteDocData | Array<any>;
+// export type Primitive = string | number | boolean | null | Uint8Array | Date | HakoDocData | Array<any>;
 export type Primitive =
   | string
   | number
@@ -9,16 +9,16 @@ export type Primitive =
   | null
   | Uint8Array
   | Date
-  | FireLiteReference
+  | HakoReference
   | { [key: string]: Primitive }
   | Primitive[];
 
 
-export type FireLiteDocData = { [key: string]: Primitive };
+export type HakoDocData = { [key: string]: Primitive };
 
 const SERVER_TIMESTAMP_SENTINEL = "__FL_SERVER_TIMESTAMP__";
 
-export class FireLiteReference {
+export class HakoReference {
   constructor(public readonly collection: string, public readonly id: string) {}
 }
 
@@ -34,10 +34,10 @@ export enum CloudSyncMode {
   Client = 1,
 }
 
-export interface FireLiteClientOptions {
+export interface HakoClientOptions {
   libraryPath?: string;
   native?: NativeBindings;
-  config?: FireLiteConfig;
+  config?: HakoConfig;
 }
 
 // 2. FIXED: Added 'in' to the interface to match the Query class
@@ -57,7 +57,7 @@ export type Unsubscribe = () => Promise<void>;
 /**
  * Advanced Configuration Builder
  */
-export class FireLiteConfig {
+export class HakoConfig {
   private _handle: unknown;
   private _native: NativeBindings;
 
@@ -128,15 +128,15 @@ function ensureOk(code: number, native: NativeBindings, ctx: string): void {
   }
 }
 
-function parseDocJson(json: string | null): FireLiteDocData {
+function parseDocJson(json: string | null): HakoDocData {
   if (!json) return {};
-  return JSON.parse(json) as FireLiteDocData;
+  return JSON.parse(json) as HakoDocData;
 }
 
-function parseQueryRows(json: string | null): FireLiteDocData[] {
+function parseQueryRows(json: string | null): HakoDocData[] {
   if (!json) return [];
   const parsed = JSON.parse(json);
-  return Array.isArray(parsed) ? (parsed as FireLiteDocData[]) : [];
+  return Array.isArray(parsed) ? (parsed as HakoDocData[]) : [];
 }
 
 /**
@@ -155,7 +155,7 @@ function insertField(native: NativeBindings, handle: unknown, key: string, value
     ensureOk(native.docInsertBin(handle, key, value), native, 'insertBin');
     return;
   }
-  if (value instanceof FireLiteReference) {
+  if (value instanceof HakoReference) {
     ensureOk(native.docInsertReference(handle, key, value.collection, value.id), native, 'insertReference');
     return;
   }
@@ -166,7 +166,7 @@ function insertField(native: NativeBindings, handle: unknown, key: string, value
       if (typeof item === 'string') native.arrayAppendStr(arrHandle, item);
       else if (typeof item === 'number') native.arrayAppendInt(arrHandle, item);
       else if (typeof item === 'object' && item !== null) {
-        const tempDoc = toNativeDoc(native, item as FireLiteDocData);
+        const tempDoc = toNativeDoc(native, item as HakoDocData);
         native.arrayAppendDoc(arrHandle, tempDoc);
         native.docFree(tempDoc); // FFI copies data into the array
       }
@@ -177,7 +177,7 @@ function insertField(native: NativeBindings, handle: unknown, key: string, value
   }
 
   if (typeof value === 'object' && value !== null) {
-    const childDocHandle = toNativeDoc(native, value as FireLiteDocData);
+    const childDocHandle = toNativeDoc(native, value as HakoDocData);
     ensureOk(native.docInsertDoc(handle, key, childDocHandle), native, 'insertDoc');
     native.docFree(childDocHandle); // FFI copies data into the parent
     return;
@@ -196,7 +196,7 @@ function insertField(native: NativeBindings, handle: unknown, key: string, value
   }
 }
 
-function toNativeDoc(native: NativeBindings, data: FireLiteDocData): unknown {
+function toNativeDoc(native: NativeBindings, data: HakoDocData): unknown {
   const doc = native.docNew();
   if (!doc) throw new Error(`docNew failed: ${native.lastError()}`);
   try {
@@ -214,11 +214,11 @@ export class DocumentSnapshot {
   constructor(
     public readonly id: string,
     public readonly exists: boolean,
-    private readonly payload?: FireLiteDocData,
+    private readonly payload?: HakoDocData,
     public readonly _nativeHandle?: unknown
   ) { }
 
-  data(): FireLiteDocData | undefined {
+  data(): HakoDocData | undefined {
     return this.payload;
   }
 }
@@ -233,7 +233,7 @@ export class RawQuerySnapshot {
   private freed = false;
 
   constructor(
-    private readonly client: FireLiteClient,
+    private readonly client: HakoClient,
     private readonly collection: string,
     private readonly handle: unknown
   ) { }
@@ -243,7 +243,7 @@ export class RawQuerySnapshot {
   }
 
   /** Decode + inflate one row. Prefer resolving only rows you touch. */
-  async resolve(index: number): Promise<FireLiteDocData | undefined> {
+  async resolve(index: number): Promise<HakoDocData | undefined> {
     const native = this.client.nativeBindings();
     const doc = native.rawDocToDoc(this.client.engineHandle(), this.rawHandleAt(index), this.collection);
     if (!doc) return undefined;
@@ -276,7 +276,7 @@ export class ViewDocSnapshot {
   private freed = false;
 
   constructor(
-    private readonly client: FireLiteClient,
+    private readonly client: HakoClient,
     private readonly collection: string,
     private readonly docId: string,
     private readonly handle: unknown
@@ -307,7 +307,7 @@ export class ViewDocSnapshot {
   }
 
   /** Full decode + inflate. Prefer pulls for sparse reads. */
-  async resolve(): Promise<FireLiteDocData | undefined> {
+  async resolve(): Promise<HakoDocData | undefined> {
     const native = this.client.nativeBindings();
     const doc = native.viewToDoc(this.handle, this.docId);
     if (!doc) return undefined;
@@ -326,7 +326,7 @@ export class ViewDocSnapshot {
   }
 }
 
-export class FireLiteClient {
+export class HakoClient {
   private readonly native: NativeBindings;
   private readonly engine: unknown;
   private isClosed = false;
@@ -336,7 +336,7 @@ export class FireLiteClient {
     this.engine = engine;
   }
 
-  static async open(path: string, options?: FireLiteClientOptions): Promise<FireLiteClient> {
+  static async open(path: string, options?: HakoClientOptions): Promise<HakoClient> {
     const native = options?.native
       ?? options?.config?.getNativeBindings()
       ?? (await loadNativeBindings(options?.libraryPath));
@@ -349,18 +349,18 @@ export class FireLiteClient {
     }
 
     if (!engine) {
-      throw new Error(`Failed to open FireLite: ${native.lastError()}`);
+      throw new Error(`Failed to open HakoDB: ${native.lastError()}`);
     }
-    return new FireLiteClient(native, engine);
+    return new HakoClient(native, engine);
   }
 
   static serverTimestamp(): any {
     return SERVER_TIMESTAMP_SENTINEL;
   }
 
-  static async createConfig(libraryPath?: string): Promise<FireLiteConfig> {
+  static async createConfig(libraryPath?: string): Promise<HakoConfig> {
     const native = await loadNativeBindings(libraryPath);
-    return new FireLiteConfig(native);
+    return new HakoConfig(native);
   }
 
   collection(name: string): CollectionReference {
@@ -471,7 +471,7 @@ export class FireLiteClient {
     return raw ? JSON.parse(raw) : null;
   }
 
-  async patch(collection: string, docId: string, data: FireLiteDocData): Promise<void> {
+  async patch(collection: string, docId: string, data: HakoDocData): Promise<void> {
     this.assertOpen();
     const updates = toNativeDoc(this.native, data);
     try {
@@ -481,7 +481,7 @@ export class FireLiteClient {
     }
   }
 
-  async insertSubDoc(col: string, id: string, subCol: string, subId: string, data: FireLiteDocData): Promise<void> {
+  async insertSubDoc(col: string, id: string, subCol: string, subId: string, data: HakoDocData): Promise<void> {
     this.assertOpen();
     const doc = toNativeDoc(this.native, data);
     try {
@@ -531,7 +531,7 @@ export class FireLiteClient {
     this.isClosed = true;
   }
 
-  async set(collection: string, docId: string, data: FireLiteDocData): Promise<void> {
+  async set(collection: string, docId: string, data: HakoDocData): Promise<void> {
     this.assertOpen();
     const doc = toNativeDoc(this.native, data);
     try {
@@ -604,7 +604,7 @@ export class FireLiteClient {
   engineHandle(): unknown { return this.engine; }
 
   private assertOpen(): void {
-    if (this.isClosed) throw new Error('FireLiteClient is already closed');
+    if (this.isClosed) throw new Error('HakoClient is already closed');
   }
 }
 
@@ -684,7 +684,7 @@ export class Transaction {
     return new DocumentSnapshot(docId, true, parseDocJson(json));
   }
 
-  set(collection: string, docId: string, data: FireLiteDocData): this {
+  set(collection: string, docId: string, data: HakoDocData): this {
     this.ensureActive();
     const doc = toNativeDoc(this.native, data);
     try {
@@ -707,13 +707,13 @@ export class Transaction {
 }
 
 export class CollectionReference {
-  constructor(private readonly client: FireLiteClient, private readonly name: string) { }
+  constructor(private readonly client: HakoClient, private readonly name: string) { }
 
   doc(id: string): DocumentReference {
     return new DocumentReference(this.client, this.name, id);
   }
 
-  onSnapshot(callback: (snapshot: FireLiteDocData[]) => void): Unsubscribe {
+  onSnapshot(callback: (snapshot: HakoDocData[]) => void): Unsubscribe {
     return new Query(this.client, this.name).onSnapshot(callback);
   }
 
@@ -734,7 +734,7 @@ export class CollectionReference {
     return new Query(this.client, this.name).select(...fields);
   }
 
-  async get(): Promise<FireLiteDocData[]> {
+  async get(): Promise<HakoDocData[]> {
     return new Query(this.client, this.name).get();
   }
 
@@ -756,13 +756,13 @@ export class CollectionReference {
 }
 
 export class DocumentReference {
-  constructor(private readonly client: FireLiteClient, readonly _collection: string, readonly _id: string) { }
+  constructor(private readonly client: HakoClient, readonly _collection: string, readonly _id: string) { }
 
-  async set(data: FireLiteDocData): Promise<void> {
+  async set(data: HakoDocData): Promise<void> {
     await this.client.set(this._collection, this._id, data);
   }
 
-  async update(data: FireLiteDocData): Promise<void> {
+  async update(data: HakoDocData): Promise<void> {
     await this.client.patch(this._collection, this._id, data);
   }
 
@@ -795,7 +795,7 @@ private queryOffset?: number;
 private projection: string[] = [];
 private deferBlobsDef = false;
 
-  constructor(private readonly client: FireLiteClient, private readonly collection: string) { }
+  constructor(private readonly client: HakoClient, private readonly collection: string) { }
 
   where(field: string, op: '==' | '!=' | '>' | '>=' | '<' | '<=' | 'match' | 'matchPrefix' | 'contains' | 'startsWith' | 'in' | 'not-in' | 'array-contains' | 'array-contains-any', value: any): Query {
     this.filters.push({ field, op, value });
@@ -962,7 +962,7 @@ return this;
     }
   }
 
-  async get(): Promise<FireLiteDocData[]> {
+  async get(): Promise<HakoDocData[]> {
     const native = this.client.nativeBindings();
     const handle = this.prepareNativeQuery();
     try {
@@ -1014,7 +1014,7 @@ return this;
     }
   }
 
-  async patch(data: FireLiteDocData): Promise<number> {
+  async patch(data: HakoDocData): Promise<number> {
     const native = this.client.nativeBindings();
     const handle = this.prepareNativeQuery();
     const patchDoc = toNativeDoc(native, data);
@@ -1064,7 +1064,7 @@ return this;
     }
   }
 
-  onSnapshot(callback: (snapshot: FireLiteDocData[]) => void): Unsubscribe {
+  onSnapshot(callback: (snapshot: HakoDocData[]) => void): Unsubscribe {
     const native = this.client.nativeBindings();
     const internalWatcher: WatchCallback = async () => {
       const data = await this.get();
@@ -1081,13 +1081,13 @@ export class WriteBatch {
   private readonly handle: unknown;
   private committed = false;
 
-  constructor(private readonly client: FireLiteClient) {
+  constructor(private readonly client: HakoClient) {
     this.native = client.nativeBindings();
     this.handle = this.native.batchNew();
     if (!this.handle) throw new Error(`batchNew failed: ${this.native.lastError()}`);
   }
 
-  set(docRef: DocumentReference, data: FireLiteDocData): WriteBatch {
+  set(docRef: DocumentReference, data: HakoDocData): WriteBatch {
     this.ensureActive();
     const doc = toNativeDoc(this.native, data);
     try {

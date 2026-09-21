@@ -1,5 +1,5 @@
 /**
- * FireLite Bun example (TypeScript SDK, bun:ffi backend - no koffi needed).
+ * Hako Bun example (TypeScript SDK, bun:ffi backend - no koffi needed).
  *
  * Setup & run (from the repository root):
  *
@@ -12,7 +12,7 @@
 import path from "node:path";
 import {
   DurabilityMode,
-  FireLiteClient,
+  HakoClient,
 } from "../../src/index.ts";
 
 const repoRoot = path.resolve(import.meta.dir, "..", "..");
@@ -26,9 +26,9 @@ const libraryPath = path.join(repoRoot, "native", libName);
 
 async function main(): Promise<void> {
   // ---- Open with a configuration ----
-  const config = await FireLiteClient.createConfig(libraryPath);
+  const config = await HakoClient.createConfig(libraryPath);
   config.setDurability(DurabilityMode.Always);
-  const db = await FireLiteClient.open("demo.db", { config, libraryPath });
+  const db = await HakoClient.open("demo.db", { config, libraryPath });
 
   // ---- Write documents ----
   await db.set("users", "u1", { name: "Alice", age: 32, active: true });

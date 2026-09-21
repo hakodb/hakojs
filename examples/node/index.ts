@@ -1,12 +1,12 @@
 /**
- * FireLite Node.js example (TypeScript SDK, koffi FFI backend).
+ * HakoDB Node.js example (TypeScript SDK, koffi FFI backend).
  *
  * Setup & run (from the repository root):
  *
- *   npm install ./js                                   # koffi + msgpack for the SDK
- *   npm install --prefix example/js/node               # tsx for running TS
- *   cargo build --release --features net-sync,cloud-sync   # -> target/release/firelite.dll
- *   node --import tsx example/js/node/index.ts
+ *   npm install                                        # koffi + msgpack
+ *   npm install --prefix examples/node                 # tsx for running TS
+ *   ..\sync-native.ps1 -CoreDir C:\Dev\libs\firelite   # -> native/hakodb.dll
+ *   node --import tsx examples/node/index.ts           # (or cd examples/node)
  *
  * You can also drop the --features and comment out the demoNetAndCloudSync()
  * call if you only want the core CRUD/query part.
@@ -15,8 +15,8 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   DurabilityMode,
-  FireLiteClient,
-  FireLiteConfig,
+  HakoClient,
+  HakoConfig,
 } from "../../src/index.ts";
 
 const repoRoot = path.resolve(
@@ -33,9 +33,9 @@ const libraryPath = path.join(repoRoot, "native", libName);
 
 async function main(): Promise<void> {
   // ---- Open with a configuration (durability / tuning) ----
-  const config: FireLiteConfig = await FireLiteClient.createConfig(libraryPath);
+  const config: HakoConfig = await HakoClient.createConfig(libraryPath);
   config.setDurability(DurabilityMode.Always).setQueryWorkers(4);
-  const db = await FireLiteClient.open("demo.db", { config, libraryPath });
+  const db = await HakoClient.open("demo.db", { config, libraryPath });
 
   // ---- Write documents ----
   await db.set("users", "u1", { name: "Alice", age: 32, active: true });
@@ -83,9 +83,9 @@ async function main(): Promise<void> {
 }
 
 /** Requires the shared library built with --features net-sync,cloud-sync
- *  and, for NetSync, a Tokio host runtime (use firelite-cli serve --net-sync
+ *  and, for NetSync, a Tokio host runtime (use hako-cli serve --net-sync
  *  for a working LAN mesh from other languages). */
-async function demoNetAndCloudSync(db: FireLiteClient): Promise<void> {
+async function demoNetAndCloudSync(db: HakoClient): Promise<void> {
   const syncer = db.createNetSyncer("demo-room", "secret-key");
   try {
     await syncer.start(4456);

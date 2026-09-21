@@ -1,14 +1,14 @@
 // export {
-//   FireLiteClient,
-//   FireLiteConfig,      // NEW: Required for tuning durability/memory
+//   HakoClient,
+//   HakoConfig,      // NEW: Required for tuning durability/memory
 //   DurabilityMode,      // NEW: Required for config
 //   CollectionReference,
 //   DocumentReference,
 //   DocumentSnapshot,
 //   Query,
 //   WriteBatch,
-//   type FireLiteDocData,
-//   type FireLiteClientOptions,
+//   type HakoDocData,
+//   type HakoClientOptions,
 //   type Unsubscribe,    // NEW: Useful for typing listener cleanup
 //   type Primitive       // NEW: Useful for custom data types
 // } from './client';
@@ -20,14 +20,14 @@
 // } from './native';
 
 // export {
-//   TauriFireLite,
+//   TauriHako,
 //   TauriCollectionReference,
 //   TauriDocumentReference,
 //   TauriDocumentSnapshot,
 //   TauriQuery,
 //   TauriWriteBatch,
-//   type FireLiteRecord,
-//   type FireLitePrimitive,
+//   type HakoRecord,
+//   type HakoPrimitive,
 //   type FilterOperator
 // } from './tauri';
 

@@ -209,8 +209,8 @@ function defaultLibraryPath(): string {
                   process.platform === 'darwin' ? 'libhakodb.dylib' : 'libhakodb.so';
   // Explicit path wins (loadNativeBindings(path)); otherwise the binary
   // shipped under ./native/ (populated by sync-native.* from a core
-  // checkout or release asset). FIRELITE_LIB_PATH overrides both.
-  const override = typeof process !== 'undefined' ? process.env.FIRELITE_LIB_PATH : undefined;
+  // checkout or release asset). HAKODB_LIB_PATH overrides both.
+  const override = typeof process !== 'undefined' ? process.env.HAKODB_LIB_PATH : undefined;
   if (override) return override;
   return `./native/${libName}`;
 }
@@ -989,5 +989,5 @@ export async function loadNativeBindings(explicitPath?: string): Promise<NativeB
     return createNodeBindings(libPath);
   }
 
-  throw new Error("FireLite Native Bindings are only supported in Node.js or Bun environments. For browsers, use the Tauri Gateway.");
+  throw new Error("HakoDB Native Bindings are only supported in Node.js or Bun environments. For browsers, use the Tauri Gateway.");
 }
