@@ -1,9 +1,9 @@
 # firelite-js
 
 JavaScript/TypeScript SDK for [FireLite](https://github.com/rizaptk/firelite):
-high-level client (`client.ts`), native FFI bindings over koffi/Bun
-(`native.ts`), and Tauri gateway client (`tauri.ts` — moving to the
-standalone `firelite-tauri-ts` package with the gateway split).
+high-level client (`client.ts`) and native FFI bindings over koffi/Bun
+(`native.ts`). The Tauri client lives in `@hakodb/tauri`
+(`firelite-tauri-ts` repo).
 
 ## Compatibility
 
@@ -27,7 +27,7 @@ Binaries under `native/` are git-ignored.
 ## Usage
 
 ```ts
-import { FireLiteClient } from "@firelite/client";
+import { FireLiteClient } from "@hakodb/client";
 
 const db = await FireLiteClient.open("./data.firelite", {
   libraryPath: "./native/firelite.dll", // optional override

@@ -1,5 +1,5 @@
 {
-  "name": "@firelite/client",
+  "name": "@hakodb/client",
   "version": "0.5.12",
   "description": "High-level FireLite JavaScript/TypeScript client for Node.js and Bun",
   "type": "module",
