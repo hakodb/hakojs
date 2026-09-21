@@ -1,9 +1,9 @@
 {
-  "name": "firelite-example-node",
+  "name": "hako-example-node",
   "private": true,
   "version": "0.1.0",
   "type": "module",
-  "description": "FireLite Node.js example using the TypeScript SDK (koffi FFI)",
+  "description": "HakoDB Node.js example using the TypeScript SDK (koffi FFI)",
   "scripts": {
     "start": "tsx index.ts"
   },

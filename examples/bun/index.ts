@@ -1,10 +1,10 @@
 /**
- * Hako Bun example (TypeScript SDK, bun:ffi backend - no koffi needed).
+ * HakoDB Bun example (TypeScript SDK, bun:ffi backend - no koffi needed).
  *
  * Setup & run (from the repository root):
  *
- *   cargo build --release --features net-sync,cloud-sync   # -> target/release/firelite.dll
- *   bun example/js/bun/index.ts
+ *   .\sync-native.ps1 -CoreDir C:\Dev\libs\firelite   # -> native/hakodb.dll
+ *   bun examples/bun/index.ts
  *
  * Bun runs TypeScript natively, so there is no install step. The SDK detects
  * the Bun runtime automatically and uses bun:ffi instead of koffi.

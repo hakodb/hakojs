@@ -605,7 +605,7 @@ async function createNodeBindings(libPath: string): Promise<NativeBindings> {
   const HeapStr = koffi.disposable('HeapStr', 'str', (ptr: any) => { flStringFreeRaw(ptr); });
 
   // Canonical callback signature (matches HK_OnSnapshotCallback in
-  // firelite.h). Kept as documentation; register() below takes the
+  // hako.h). Kept as documentation; register() below takes the
   // typedef NAME as a string, not this proto object.
   const OnSnapshotCB = koffi.proto('void HK_OnSnapshotCallback(const char *collection, const char *path, int32_t kind, void *user_data)');
 
