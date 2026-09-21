@@ -1,4 +1,4 @@
-# hako-js
+# hakojs
 
 JavaScript/TypeScript SDK for HakoDB:
 high-level client (`client.ts`: `HakoClient`, `HakoConfig`) and native
@@ -7,7 +7,7 @@ FFI bindings over koffi/Bun (`native.ts`). Tauri lives in `@hakodb/tauri`
 
 ## Compatibility
 
-| hako-js | hako core |
+| hakojs | hako core |
 |---|---|
 | 0.5.12 | `cloud_sync` branch / `v0.8.21`+ release asset |
 

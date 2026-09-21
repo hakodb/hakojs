@@ -1,6 +1,6 @@
 {
   "name": "@hakodb/client",
-  "version": "0.5.12",
+  "version": "0.5.13",
   "description": "High-level HakoDB JavaScript/TypeScript client for Node.js and Bun",
   "license": "MIT",
   "type": "module",
