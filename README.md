@@ -1,15 +1,17 @@
 # hakojs
 
+> Part of [**HakoDB**](https://github.com/hakodb/hakodb) — embedded Firestore-style document DB in Rust. The engine + C ABI live in `hakodb/hakodb`; this repo holds the JavaScript/TypeScript SDK.
+
 JavaScript/TypeScript SDK for HakoDB:
 high-level client (`client.ts`: `HakoClient`, `HakoConfig`) and native
 FFI bindings over koffi/Bun (`native.ts`). Tauri lives in `@hakodb/tauri`
-(sibling dir, renaming with repo creation).
+(sibling repo [`hakodb/hakotaurits`](https://github.com/hakodb/hakotaurits)).
 
 ## Compatibility
 
 | hakojs | hako core |
 |---|---|
-| 0.5.12 | `cloud_sync` branch / `v0.8.21`+ release asset |
+| 0.5.13 | `cloud_sync` branch / `v0.8.21`+ release asset |
 
 ## Setup — native library
 
