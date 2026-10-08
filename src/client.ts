@@ -600,6 +600,33 @@ export class HakoClient {
     return n;
   }
 
+  /** Relocate docs by id src -> dst. Returns {moved, missing}; refusals throw. */
+  async relocateDocs(src: string, dst: string, ids: string[]): Promise<{ moved: string[]; missing: string[] }> {
+    this.assertOpen();
+    const json = this.native.engineRelocateDocs(this.engine, src, dst, JSON.stringify(ids));
+    if (!json) throw new Error(`engineRelocateDocs failed: ${this.native.lastError()}`);
+    return JSON.parse(json);
+  }
+
+  /** Load a lazy collection's snapshot into the index now. */
+  async loadCollection(collection: string): Promise<void> {
+    this.assertOpen();
+    ensureOk(this.native.engineLoadCollection(this.engine, collection), this.native, 'engineLoadCollection');
+  }
+
+  /** Unload a lazy collection (frees RAM; snapshot stays). Refuses non-lazy. */
+  async unloadCollection(collection: string): Promise<void> {
+    this.assertOpen();
+    ensureOk(this.native.engineUnloadCollection(this.engine, collection), this.native, 'engineUnloadCollection');
+  }
+
+  /** Lazy collections currently out of the index. */
+  async unloadedCollections(): Promise<string[]> {
+    this.assertOpen();
+    const json = this.native.engineUnloadedCollections(this.engine);
+    return json ? JSON.parse(json) : [];
+  }
+
   nativeBindings(): NativeBindings { return this.native; }
   engineHandle(): unknown { return this.engine; }
 

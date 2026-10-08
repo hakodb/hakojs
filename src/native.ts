@@ -65,6 +65,10 @@ export interface NativeBindings {
   engineReplicateKey(engine: Handle, collection: string, docId: string): number;
   engineReplicateCollection(engine: Handle, collection: string): number;
   engineVacuumCollection(engine: Handle, collection: string): number;
+  engineRelocateDocs(engine: Handle, src: string, dst: string, idsJson: string): string | null;
+  engineLoadCollection(engine: Handle, collection: string): number;
+  engineUnloadCollection(engine: Handle, collection: string): number;
+  engineUnloadedCollections(engine: Handle): string | null;
   enginePatch(engine: Handle, collection: string, docId: string, updates: Handle): number;
   engineInsertSubDoc(engine: Handle, col: string, id: string, subCol: string, subId: string, doc: Handle): number;
   engineGetByRef(engine: Handle, doc: Handle, fieldKey: string): Handle;
@@ -271,6 +275,10 @@ async function createBunBindings(libPath: string): Promise<NativeBindings> {
     hk_engine_replicate_key: { args: [FFIType.ptr, FFIType.cstring, FFIType.cstring], returns: FFIType.i32 },
     hk_engine_replicate_collection: { args: [FFIType.ptr, FFIType.cstring], returns: FFIType.i32 },
     hk_engine_vacuum_collection: { args: [FFIType.ptr, FFIType.cstring], returns: FFIType.i32 },
+    hk_engine_relocate_docs: { args: [FFIType.ptr, FFIType.cstring, FFIType.cstring, FFIType.cstring], returns: FFIType.ptr },
+    hk_engine_load_collection: { args: [FFIType.ptr, FFIType.cstring], returns: FFIType.i32 },
+    hk_engine_unload_collection: { args: [FFIType.ptr, FFIType.cstring], returns: FFIType.i32 },
+    hk_engine_unloaded_collections: { args: [FFIType.ptr], returns: FFIType.ptr },
     hk_engine_patch: { args: [FFIType.ptr, FFIType.cstring, FFIType.cstring, FFIType.ptr], returns: FFIType.i32 },
     hk_engine_insert_subdoc: { args: [FFIType.ptr, FFIType.cstring, FFIType.cstring, FFIType.cstring, FFIType.cstring, FFIType.ptr], returns: FFIType.i32 },
     hk_engine_get_by_ref: { args: [FFIType.ptr, FFIType.ptr, FFIType.cstring], returns: FFIType.ptr },
@@ -452,6 +460,10 @@ async function createBunBindings(libPath: string): Promise<NativeBindings> {
     engineReplicateKey: (engine, collection, docId) => symbols.hk_engine_replicate_key(engine, toC(collection), toC(docId)),
     engineReplicateCollection: (engine, collection) => symbols.hk_engine_replicate_collection(engine, toC(collection)),
     engineVacuumCollection: (engine, collection) => symbols.hk_engine_vacuum_collection(engine, toC(collection)),
+    engineRelocateDocs: (engine, src, dst, idsJson) => ptrToStringAndFree(symbols.hk_engine_relocate_docs(engine, toC(src), toC(dst), toC(idsJson))),
+    engineLoadCollection: (engine, collection) => symbols.hk_engine_load_collection(engine, toC(collection)),
+    engineUnloadCollection: (engine, collection) => symbols.hk_engine_unload_collection(engine, toC(collection)),
+    engineUnloadedCollections: (engine) => ptrToStringAndFree(symbols.hk_engine_unloaded_collections(engine)),
     enginePatch: (engine, collection, docId, updates) => symbols.hk_engine_patch(engine, toC(collection), toC(docId), updates),
     engineInsertSubDoc: (engine, col, id, subCol, subId, doc) => symbols.hk_engine_insert_subdoc(engine, toC(col), toC(id), toC(subCol), toC(subId), doc),
     engineGetByRef: (engine, doc, fieldKey) => symbols.hk_engine_get_by_ref(engine, doc, toC(fieldKey)),
@@ -661,6 +673,10 @@ async function createNodeBindings(libPath: string): Promise<NativeBindings> {
     hk_engine_replicate_key: lib.func('int hk_engine_replicate_key(HK_Engine* engine, const char* collection, const char* doc_id)'),
     hk_engine_replicate_collection: lib.func('int hk_engine_replicate_collection(HK_Engine* engine, const char* collection)'),
     hk_engine_vacuum_collection: lib.func('int hk_engine_vacuum_collection(HK_Engine* engine, const char* collection)'),
+    hk_engine_relocate_docs: lib.func('HeapStr hk_engine_relocate_docs(HK_Engine* engine, const char* src, const char* dst, const char* ids_json)'),
+    hk_engine_load_collection: lib.func('int hk_engine_load_collection(HK_Engine* engine, const char* collection)'),
+    hk_engine_unload_collection: lib.func('int hk_engine_unload_collection(HK_Engine* engine, const char* collection)'),
+    hk_engine_unloaded_collections: lib.func('HeapStr hk_engine_unloaded_collections(HK_Engine* engine)'),
     hk_engine_patch: lib.func('int hk_engine_patch(HK_Engine* engine, const char* collection, const char* doc_id, const HK_Doc* updates)'),
     hk_engine_insert_subdoc: lib.func('int hk_engine_insert_subdoc(HK_Engine* engine, const char* col, const char* id, const char* sub_col, const char* sub_id, const HK_Doc* doc)'),
     hk_engine_get_by_ref: lib.func('HK_Doc* hk_engine_get_by_ref(HK_Engine* engine, const HK_Doc* doc, const char* field_key)'),
@@ -845,6 +861,10 @@ async function createNodeBindings(libPath: string): Promise<NativeBindings> {
     engineReplicateKey: (engine, collection, docId) => fn.hk_engine_replicate_key(engine, collection, docId),
     engineReplicateCollection: (engine, collection) => fn.hk_engine_replicate_collection(engine, collection),
     engineVacuumCollection: (engine, collection) => fn.hk_engine_vacuum_collection(engine, collection),
+    engineRelocateDocs: (engine, src, dst, idsJson) => ptrToStringAndFree(fn.hk_engine_relocate_docs(engine, src, dst, idsJson)),
+    engineLoadCollection: (engine, collection) => fn.hk_engine_load_collection(engine, collection),
+    engineUnloadCollection: (engine, collection) => fn.hk_engine_unload_collection(engine, collection),
+    engineUnloadedCollections: (engine) => ptrToStringAndFree(fn.hk_engine_unloaded_collections(engine)),
     enginePatch: (engine, collection, docId, updates) => fn.hk_engine_patch(engine, collection, docId, updates),
     engineInsertSubDoc: (engine, col, id, subCol, subId, doc) => fn.hk_engine_insert_subdoc(engine, col, id, subCol, subId, doc),
     engineGetByRef: (engine, doc, fieldKey) => fn.hk_engine_get_by_ref(engine, doc, fieldKey),
