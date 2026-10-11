@@ -178,6 +178,12 @@ export interface NativeBindings {
   // v0.5.9
   createFtsIndex(engine: Handle, collection: string, field: string): number;
   createSimpleIndex(engine: Handle, collection: string, field: string): number;
+
+  // Vector KNN (core >=0.13.3): one-shot search returns owned JSON
+  // [{id, score, doc}] (null = hard error, e.g. dim mismatch — read
+  // lastError); unindexed field returns "[]".
+  createVectorIndex(engine: Handle, collection: string, field: string, dim: number, metric: number): number;
+  engineFindNear(engine: Handle, collection: string, field: string, vec: Float32Array, k: number): string | null;
   
   // Array API
   arrayNew(): Handle;
@@ -283,6 +289,8 @@ async function createBunBindings(libPath: string): Promise<NativeBindings> {
     hk_engine_insert_subdoc: { args: [FFIType.ptr, FFIType.cstring, FFIType.cstring, FFIType.cstring, FFIType.cstring, FFIType.ptr], returns: FFIType.i32 },
     hk_engine_get_by_ref: { args: [FFIType.ptr, FFIType.ptr, FFIType.cstring], returns: FFIType.ptr },
     hk_engine_create_index: { args: [FFIType.ptr, FFIType.cstring, FFIType.cstring], returns: FFIType.u32 },
+    hk_engine_create_vector_index: { args: [FFIType.ptr, FFIType.cstring, FFIType.cstring, FFIType.u32, FFIType.u32], returns: FFIType.i32 },
+    hk_engine_find_near: { args: [FFIType.ptr, FFIType.cstring, FFIType.cstring, FFIType.ptr, FFIType.usize, FFIType.usize], returns: FFIType.ptr },
 
     hk_batch_new: { args: [], returns: FFIType.ptr },
     hk_batch_free: { args: [FFIType.ptr], returns: FFIType.void },
@@ -567,6 +575,10 @@ async function createBunBindings(libPath: string): Promise<NativeBindings> {
     // Indexing
     createFtsIndex: (engine, collection, field) => symbols.hk_engine_create_fts_index(engine, toC(collection), toC(field)),
     createSimpleIndex: (engine, collection, field) => symbols.hk_engine_create_simple_index(engine, toC(collection), toC(field)),
+    createVectorIndex: (engine, collection, field, dim, metric) => symbols.hk_engine_create_vector_index(engine, toC(collection), toC(field), dim, metric),
+    // Float32Array crosses as its LE-f32 bytes (bun:ffi takes the typed
+    // array as ptr, like docInsertBin takes bytes).
+    engineFindNear: (engine, collection, field, vec, k) => ptrToStringAndFree(symbols.hk_engine_find_near(engine, toC(collection), toC(field), vec, vec.length, k)),
 
     // Array API
     arrayNew: () => symbols.hk_array_new(),
@@ -681,6 +693,8 @@ async function createNodeBindings(libPath: string): Promise<NativeBindings> {
     hk_engine_insert_subdoc: lib.func('int hk_engine_insert_subdoc(HK_Engine* engine, const char* col, const char* id, const char* sub_col, const char* sub_id, const HK_Doc* doc)'),
     hk_engine_get_by_ref: lib.func('HK_Doc* hk_engine_get_by_ref(HK_Engine* engine, const HK_Doc* doc, const char* field_key)'),
     hk_engine_create_index: lib.func('uint32_t hk_engine_create_index(HK_Engine* engine, const char* collection, const char* fields_json)'),
+    hk_engine_create_vector_index: lib.func('int hk_engine_create_vector_index(HK_Engine* engine, const char* collection, const char* field, uint32_t dim, uint32_t metric)'),
+    hk_engine_find_near: lib.func('HeapStr hk_engine_find_near(HK_Engine* engine, const char* collection, const char* field, const float* vec, size_t len, size_t k)'),
 
     hk_batch_new: lib.func('HK_Batch* hk_batch_new()'),
     hk_batch_free: lib.func('void hk_batch_free(HK_Batch* batch)'),
@@ -968,6 +982,10 @@ async function createNodeBindings(libPath: string): Promise<NativeBindings> {
     // Indexing
     createFtsIndex: (engine, collection, field) => fn.hk_engine_create_fts_index(engine, collection, field),
     createSimpleIndex: (engine, collection, field) => fn.hk_engine_create_simple_index(engine, collection, field),
+    createVectorIndex: (engine, collection, field, dim, metric) => fn.hk_engine_create_vector_index(engine, collection, field, dim, metric),
+    // LE-f32 bytes via Buffer over the Float32Array (koffi takes Buffer
+    // for float*, same as docInsertBin takes Buffer for uint8_t*).
+    engineFindNear: (engine, collection, field, vec, k) => fn.hk_engine_find_near(engine, collection, field, Buffer.from(vec.buffer, vec.byteOffset, vec.byteLength), vec.length, k),
 
     // Array API
     arrayNew: () => fn.hk_array_new(),
