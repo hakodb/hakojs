@@ -16,6 +16,16 @@ export type Primitive =
 
 export type HakoDocData = { [key: string]: Primitive };
 
+/** Distance metric for vector indexes (matches core Metric::from_u32). */
+export type VectorMetric = 'cosine' | 'l2';
+
+/** One KNN hit: doc id, exact metric distance, and the doc itself. */
+export interface NearHit {
+  id: string;
+  score: number;
+  doc: HakoDocData;
+}
+
 const SERVER_TIMESTAMP_SENTINEL = "__FL_SERVER_TIMESTAMP__";
 
 export class HakoReference {
@@ -771,6 +781,19 @@ export class CollectionReference {
 
   async createIndex(field: string): Promise<void> {
     ensureOk(this.client.nativeBindings().createSimpleIndex(this.client.engineHandle(), this.name, field), this.client.nativeBindings(), 'createIndex');
+  }
+
+  async createVectorIndex(field: string, dim: number, metric: VectorMetric = 'cosine'): Promise<void> {
+    ensureOk(this.client.nativeBindings().createVectorIndex(this.client.engineHandle(), this.name, field, dim, metric === 'l2' ? 1 : 0), this.client.nativeBindings(), 'createVectorIndex');
+  }
+
+  /** KNN search: nearest-first [{id, score, doc}]. Embeddings are stored as binary LE-f32 (insert a Uint8Array of Float32 bytes). */
+  async findNear(field: string, query: number[] | Float32Array, k = 10): Promise<NearHit[]> {
+    const native = this.client.nativeBindings();
+    const vec = query instanceof Float32Array ? query : Float32Array.from(query);
+    const json = native.engineFindNear(this.client.engineHandle(), this.name, field, vec, k);
+    if (json === null) throw new Error(`findNear failed: ${native.lastError()}`);
+    return JSON.parse(json) as NearHit[];
   }
 
   async createFtsIndex(field: string): Promise<void> {
