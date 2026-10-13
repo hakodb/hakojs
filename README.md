@@ -1,6 +1,6 @@
 # hakojs
 
-> Part of [**HakoDB**](https://github.com/hakodb/hakodb) — embedded Firestore-style document DB in Rust. The engine + C ABI live in `hakodb/hakodb`; this repo holds the JavaScript/TypeScript SDK.
+> Part of [**HakoDB**](https://github.com/hakodb/hakodb) — embedded document DB with native vector search and multi-plane sync, written in Rust. The engine + C ABI live in `hakodb/hakodb`; this repo holds the JavaScript/TypeScript SDK.
 
 JavaScript/TypeScript SDK for HakoDB:
 high-level client (`client.ts`: `HakoClient`, `HakoConfig`) and native

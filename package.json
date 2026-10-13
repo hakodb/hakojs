@@ -12,10 +12,10 @@
   },
   "keywords": [
     "hakodb",
-    "firestore",
     "embedded",
     "database",
-    "ffi"
+    "ffi",
+    "vector-search"
   ],
   "engines": {
     "node": ">=18"
