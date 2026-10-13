@@ -184,6 +184,13 @@ export interface NativeBindings {
   // lastError); unindexed field returns "[]".
   createVectorIndex(engine: Handle, collection: string, field: string, dim: number, metric: number): number;
   engineFindNear(engine: Handle, collection: string, field: string, vec: Float32Array, k: number): string | null;
+
+  // Graph traversal (core >=0.14.0): one-shot BFS returns owned JSON
+  // [{collection, id, depth, doc}] (null = hard error, e.g. incoming
+  // into untracked — read lastError); missing anchor returns "[]".
+  // direction 0/1/2 = outgoing/incoming/both; edge null = any ref field.
+  createTraverseIndex(engine: Handle, collection: string): number;
+  engineFindPaths(engine: Handle, collection: string, id: string, direction: number, edge: string | null, maxDepth: number, k: number): string | null;
   
   // Array API
   arrayNew(): Handle;
@@ -291,6 +298,8 @@ async function createBunBindings(libPath: string): Promise<NativeBindings> {
     hk_engine_create_index: { args: [FFIType.ptr, FFIType.cstring, FFIType.cstring], returns: FFIType.u32 },
     hk_engine_create_vector_index: { args: [FFIType.ptr, FFIType.cstring, FFIType.cstring, FFIType.u32, FFIType.u32], returns: FFIType.i32 },
     hk_engine_find_near: { args: [FFIType.ptr, FFIType.cstring, FFIType.cstring, FFIType.ptr, FFIType.usize, FFIType.usize], returns: FFIType.ptr },
+    hk_engine_create_traverse_index: { args: [FFIType.ptr, FFIType.cstring], returns: FFIType.i32 },
+    hk_engine_find_paths: { args: [FFIType.ptr, FFIType.cstring, FFIType.cstring, FFIType.u32, FFIType.cstring, FFIType.usize, FFIType.usize], returns: FFIType.ptr },
 
     hk_batch_new: { args: [], returns: FFIType.ptr },
     hk_batch_free: { args: [FFIType.ptr], returns: FFIType.void },
@@ -579,6 +588,9 @@ async function createBunBindings(libPath: string): Promise<NativeBindings> {
     // Float32Array crosses as its LE-f32 bytes (bun:ffi takes the typed
     // array as ptr, like docInsertBin takes bytes).
     engineFindNear: (engine, collection, field, vec, k) => ptrToStringAndFree(symbols.hk_engine_find_near(engine, toC(collection), toC(field), vec, vec.length, k)),
+    createTraverseIndex: (engine, collection) => symbols.hk_engine_create_traverse_index(engine, toC(collection)),
+    // Null edge crosses as NULL (any ref field); bun:ffi takes null for ptr/cstring.
+    engineFindPaths: (engine, collection, id, direction, edge, maxDepth, k) => ptrToStringAndFree(symbols.hk_engine_find_paths(engine, toC(collection), toC(id), direction, edge === null ? null : toC(edge), maxDepth, k)),
 
     // Array API
     arrayNew: () => symbols.hk_array_new(),
@@ -695,6 +707,8 @@ async function createNodeBindings(libPath: string): Promise<NativeBindings> {
     hk_engine_create_index: lib.func('uint32_t hk_engine_create_index(HK_Engine* engine, const char* collection, const char* fields_json)'),
     hk_engine_create_vector_index: lib.func('int hk_engine_create_vector_index(HK_Engine* engine, const char* collection, const char* field, uint32_t dim, uint32_t metric)'),
     hk_engine_find_near: lib.func('HeapStr hk_engine_find_near(HK_Engine* engine, const char* collection, const char* field, const float* vec, size_t len, size_t k)'),
+    hk_engine_create_traverse_index: lib.func('int hk_engine_create_traverse_index(HK_Engine* engine, const char* collection)'),
+    hk_engine_find_paths: lib.func('HeapStr hk_engine_find_paths(HK_Engine* engine, const char* collection, const char* doc_id, uint32_t direction, const char* edge, size_t max_depth, size_t k)'),
 
     hk_batch_new: lib.func('HK_Batch* hk_batch_new()'),
     hk_batch_free: lib.func('void hk_batch_free(HK_Batch* batch)'),
@@ -986,6 +1000,9 @@ async function createNodeBindings(libPath: string): Promise<NativeBindings> {
     // LE-f32 bytes via Buffer over the Float32Array (koffi takes Buffer
     // for float*, same as docInsertBin takes Buffer for uint8_t*).
     engineFindNear: (engine, collection, field, vec, k) => fn.hk_engine_find_near(engine, collection, field, Buffer.from(vec.buffer, vec.byteOffset, vec.byteLength), vec.length, k),
+    createTraverseIndex: (engine, collection) => fn.hk_engine_create_traverse_index(engine, collection),
+    // Null edge crosses as NULL (koffi takes null for char*).
+    engineFindPaths: (engine, collection, id, direction, edge, maxDepth, k) => fn.hk_engine_find_paths(engine, collection, id, direction, edge, maxDepth, k),
 
     // Array API
     arrayNew: () => fn.hk_array_new(),
