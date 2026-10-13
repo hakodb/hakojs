@@ -26,6 +26,17 @@ export interface NearHit {
   doc: HakoDocData;
 }
 
+/** Traversal direction (matches core TraverseDir::from_u32). */
+export type TraverseDirection = 'outgoing' | 'incoming' | 'both';
+
+/** One graph hit: collection + id (paths cross collections), BFS depth, doc. */
+export interface PathHit {
+  collection: string;
+  id: string;
+  depth: number;
+  doc: HakoDocData;
+}
+
 const SERVER_TIMESTAMP_SENTINEL = "__FL_SERVER_TIMESTAMP__";
 
 export class HakoReference {
@@ -794,6 +805,19 @@ export class CollectionReference {
     const json = native.engineFindNear(this.client.engineHandle(), this.name, field, vec, k);
     if (json === null) throw new Error(`findNear failed: ${native.lastError()}`);
     return JSON.parse(json) as NearHit[];
+  }
+
+  async createTraverseIndex(): Promise<void> {
+    ensureOk(this.client.nativeBindings().createTraverseIndex(this.client.engineHandle(), this.name), this.client.nativeBindings(), 'createTraverseIndex');
+  }
+
+  /** Graph BFS from a doc in this collection: [{collection, id, depth, doc}]. edge null = any ref field. */
+  async findPaths(id: string, direction: TraverseDirection = 'outgoing', edge: string | null = null, maxDepth = 10, k = 100): Promise<PathHit[]> {
+    const native = this.client.nativeBindings();
+    const dir = direction === 'incoming' ? 1 : direction === 'both' ? 2 : 0;
+    const json = native.engineFindPaths(this.client.engineHandle(), this.name, id, dir, edge, maxDepth, k);
+    if (json === null) throw new Error(`findPaths failed: ${native.lastError()}`);
+    return JSON.parse(json) as PathHit[];
   }
 
   async createFtsIndex(field: string): Promise<void> {
