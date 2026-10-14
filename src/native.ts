@@ -191,6 +191,10 @@ export interface NativeBindings {
   // direction 0/1/2 = outgoing/incoming/both; edge null = any ref field.
   createTraverseIndex(engine: Handle, collection: string): number;
   engineFindPaths(engine: Handle, collection: string, id: string, direction: number, edge: string | null, maxDepth: number, k: number): string | null;
+  // Phase B (core >=0.15.0): edge registration + weighted Dijkstra
+  // (same hit shape, cost-ordered; cost rides each hit).
+  createEdgeIndex(engine: Handle, collection: string): number;
+  engineShortestPaths(engine: Handle, collection: string, id: string, direction: number, edge: string | null, via: string | null, weight: string | null, maxDepth: number, k: number): string | null;
   
   // Array API
   arrayNew(): Handle;
@@ -300,6 +304,8 @@ async function createBunBindings(libPath: string): Promise<NativeBindings> {
     hk_engine_find_near: { args: [FFIType.ptr, FFIType.cstring, FFIType.cstring, FFIType.ptr, FFIType.usize, FFIType.usize], returns: FFIType.ptr },
     hk_engine_create_traverse_index: { args: [FFIType.ptr, FFIType.cstring], returns: FFIType.i32 },
     hk_engine_find_paths: { args: [FFIType.ptr, FFIType.cstring, FFIType.cstring, FFIType.u32, FFIType.cstring, FFIType.usize, FFIType.usize], returns: FFIType.ptr },
+    hk_engine_create_edge_index: { args: [FFIType.ptr, FFIType.cstring], returns: FFIType.i32 },
+    hk_engine_shortest_paths: { args: [FFIType.ptr, FFIType.cstring, FFIType.cstring, FFIType.u32, FFIType.cstring, FFIType.cstring, FFIType.cstring, FFIType.usize, FFIType.usize], returns: FFIType.ptr },
 
     hk_batch_new: { args: [], returns: FFIType.ptr },
     hk_batch_free: { args: [FFIType.ptr], returns: FFIType.void },
@@ -591,6 +597,8 @@ async function createBunBindings(libPath: string): Promise<NativeBindings> {
     createTraverseIndex: (engine, collection) => symbols.hk_engine_create_traverse_index(engine, toC(collection)),
     // Null edge crosses as NULL (any ref field); bun:ffi takes null for ptr/cstring.
     engineFindPaths: (engine, collection, id, direction, edge, maxDepth, k) => ptrToStringAndFree(symbols.hk_engine_find_paths(engine, toC(collection), toC(id), direction, edge === null ? null : toC(edge), maxDepth, k)),
+    createEdgeIndex: (engine, collection) => symbols.hk_engine_create_edge_index(engine, toC(collection)),
+    engineShortestPaths: (engine, collection, id, direction, edge, via, weight, maxDepth, k) => ptrToStringAndFree(symbols.hk_engine_shortest_paths(engine, toC(collection), toC(id), direction, edge === null ? null : toC(edge), via === null ? null : toC(via), weight === null ? null : toC(weight), maxDepth, k)),
 
     // Array API
     arrayNew: () => symbols.hk_array_new(),
@@ -709,6 +717,8 @@ async function createNodeBindings(libPath: string): Promise<NativeBindings> {
     hk_engine_find_near: lib.func('HeapStr hk_engine_find_near(HK_Engine* engine, const char* collection, const char* field, const float* vec, size_t len, size_t k)'),
     hk_engine_create_traverse_index: lib.func('int hk_engine_create_traverse_index(HK_Engine* engine, const char* collection)'),
     hk_engine_find_paths: lib.func('HeapStr hk_engine_find_paths(HK_Engine* engine, const char* collection, const char* doc_id, uint32_t direction, const char* edge, size_t max_depth, size_t k)'),
+    hk_engine_create_edge_index: lib.func('int hk_engine_create_edge_index(HK_Engine* engine, const char* collection)'),
+    hk_engine_shortest_paths: lib.func('HeapStr hk_engine_shortest_paths(HK_Engine* engine, const char* collection, const char* doc_id, uint32_t direction, const char* edge, const char* via, const char* weight, size_t max_depth, size_t k)'),
 
     hk_batch_new: lib.func('HK_Batch* hk_batch_new()'),
     hk_batch_free: lib.func('void hk_batch_free(HK_Batch* batch)'),
@@ -1003,6 +1013,8 @@ async function createNodeBindings(libPath: string): Promise<NativeBindings> {
     createTraverseIndex: (engine, collection) => fn.hk_engine_create_traverse_index(engine, collection),
     // Null edge crosses as NULL (koffi takes null for char*).
     engineFindPaths: (engine, collection, id, direction, edge, maxDepth, k) => fn.hk_engine_find_paths(engine, collection, id, direction, edge, maxDepth, k),
+    createEdgeIndex: (engine, collection) => fn.hk_engine_create_edge_index(engine, collection),
+    engineShortestPaths: (engine, collection, id, direction, edge, via, weight, maxDepth, k) => fn.hk_engine_shortest_paths(engine, collection, id, direction, edge, via, weight, maxDepth, k),
 
     // Array API
     arrayNew: () => fn.hk_array_new(),

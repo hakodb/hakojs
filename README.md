@@ -15,6 +15,7 @@ FFI bindings over koffi/Bun (`native.ts`). Tauri lives in `@hakodb/tauri`
 | 0.5.15 | `hakodb v0.12.3` (archive: `relocateDocs`/`load`/`unload`/`unloadedCollections`) |
 | 0.5.16 | `hakodb v0.13.3` (`createVectorIndex` + `findNear` KNN over `hk_engine_find_near`) |
 | 0.5.17 | `hakodb v0.14.0` (`createTraverseIndex` + `findPaths` graph BFS over `hk_engine_find_paths`) |
+| 0.5.18 | `hakodb v0.15.0` (Phase B: `createEdgeIndex` + `shortestPaths` Dijkstra over `hk_engine_shortest_paths`) |
 
 ## Setup — native library
 
