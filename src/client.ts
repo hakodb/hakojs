@@ -34,6 +34,7 @@ export interface PathHit {
   collection: string;
   id: string;
   depth: number;
+  cost?: number;
   doc: HakoDocData;
 }
 
@@ -817,6 +818,19 @@ export class CollectionReference {
     const dir = direction === 'incoming' ? 1 : direction === 'both' ? 2 : 0;
     const json = native.engineFindPaths(this.client.engineHandle(), this.name, id, dir, edge, maxDepth, k);
     if (json === null) throw new Error(`findPaths failed: ${native.lastError()}`);
+    return JSON.parse(json) as PathHit[];
+  }
+
+  async createEdgeIndex(): Promise<void> {
+    ensureOk(this.client.nativeBindings().createEdgeIndex(this.client.engineHandle(), this.name), this.client.nativeBindings(), 'createEdgeIndex');
+  }
+
+  /** Weighted shortest paths via an edge collection: cost-ordered [{collection, id, depth, cost, doc}]. */
+  async shortestPaths(id: string, via: string, weight: string | null = null, direction: TraverseDirection = 'outgoing', edge: string | null = null, maxDepth = 10, k = 100): Promise<PathHit[]> {
+    const native = this.client.nativeBindings();
+    const dir = direction === 'incoming' ? 1 : direction === 'both' ? 2 : 0;
+    const json = native.engineShortestPaths(this.client.engineHandle(), this.name, id, dir, edge, via, weight, maxDepth, k);
+    if (json === null) throw new Error(`shortestPaths failed: ${native.lastError()}`);
     return JSON.parse(json) as PathHit[];
   }
 
