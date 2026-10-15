@@ -1,6 +1,6 @@
 {
   "name": "@hakodb/client",
-  "version": "0.5.18",
+  "version": "0.5.19",
   "description": "High-level HakoDB JavaScript/TypeScript client for Node.js and Bun",
   "license": "MIT",
   "type": "module",
@@ -27,5 +27,8 @@
   "devDependencies": {
     "@types/node": "^26.1.2",
     "typescript": "^7.0.2"
+  },
+  "scripts": {
+    "test": "tsc --noEmit -p tsconfig.json"
   }
 }
