@@ -399,7 +399,7 @@ async function createBunBindings(libPath: string): Promise<NativeBindings> {
 
     hk_doc_insert_reference: { args: [FFIType.ptr, FFIType.cstring, FFIType.cstring, FFIType.cstring], returns: FFIType.i32 },
 
-    hk_cloud_sync_new: { args: [FFIType.ptr, FFIType.i32, FFIType.cstring, FFIType.cstring, FFIType.cstring], returns: FFIType.ptr },
+    hk_cloud_sync_new: { args: [FFIType.ptr, FFIType.i32, FFIType.cstring, FFIType.cstring, FFIType.cstring, FFIType.cstring], returns: FFIType.ptr },
     hk_cloud_sync_server_new: { args: [FFIType.ptr, FFIType.cstring, FFIType.cstring, FFIType.cstring, FFIType.cstring], returns: FFIType.ptr },
     hk_cloud_sync_client_new: { args: [FFIType.ptr, FFIType.cstring, FFIType.cstring, FFIType.cstring, FFIType.cstring], returns: FFIType.ptr },
     hk_cloud_sync_start: { args: [FFIType.ptr, FFIType.cstring], returns: FFIType.i32 },
