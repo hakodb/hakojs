@@ -168,7 +168,7 @@ export interface NativeBindings {
 
   // Cloud Sync (bi-directional WebSocket replication)
   cloudSyncNew(engine: Handle, mode: number, clientId: string | null, roomName: string | null, roomKey: string | null, authToken: string | null): Handle;
-  cloudSyncServerNew(engine: Handle, serverId: string | null, authToken: string | null): Handle;
+  cloudSyncServerNew(engine: Handle, serverId: string | null, authToken: string | null, roomName: string | null, roomKey: string | null): Handle;
   cloudSyncClientNew(engine: Handle, clientId: string | null, roomName: string | null, roomKey: string | null, authToken: string | null): Handle;
   cloudSyncStart(cloudSync: Handle, address: string): number;
   cloudSyncStatus(cloudSync: Handle): string | null;
@@ -400,7 +400,7 @@ async function createBunBindings(libPath: string): Promise<NativeBindings> {
     hk_doc_insert_reference: { args: [FFIType.ptr, FFIType.cstring, FFIType.cstring, FFIType.cstring], returns: FFIType.i32 },
 
     hk_cloud_sync_new: { args: [FFIType.ptr, FFIType.i32, FFIType.cstring, FFIType.cstring, FFIType.cstring], returns: FFIType.ptr },
-    hk_cloud_sync_server_new: { args: [FFIType.ptr, FFIType.cstring, FFIType.cstring], returns: FFIType.ptr },
+    hk_cloud_sync_server_new: { args: [FFIType.ptr, FFIType.cstring, FFIType.cstring, FFIType.cstring, FFIType.cstring], returns: FFIType.ptr },
     hk_cloud_sync_client_new: { args: [FFIType.ptr, FFIType.cstring, FFIType.cstring, FFIType.cstring, FFIType.cstring], returns: FFIType.ptr },
     hk_cloud_sync_start: { args: [FFIType.ptr, FFIType.cstring], returns: FFIType.i32 },
     hk_cloud_sync_status: { args: [FFIType.ptr], returns: FFIType.ptr },
@@ -578,7 +578,7 @@ async function createBunBindings(libPath: string): Promise<NativeBindings> {
     netSyncerFree: (syncer) => symbols.hk_net_syncer_free(syncer),
 
     cloudSyncNew: (engine, mode, clientId, roomName, roomKey, authToken) => symbols.hk_cloud_sync_new(engine, mode, toC(clientId), toC(roomName), toC(roomKey), toC(authToken)),
-    cloudSyncServerNew: (engine, serverId, authToken) => symbols.hk_cloud_sync_server_new(engine, toC(serverId), toC(authToken)),
+    cloudSyncServerNew: (engine, serverId, authToken, roomName, roomKey) => symbols.hk_cloud_sync_server_new(engine, toC(serverId), toC(authToken), toC(roomName), toC(roomKey)),
     cloudSyncClientNew: (engine, clientId, roomName, roomKey, authToken) => symbols.hk_cloud_sync_client_new(engine, toC(clientId), toC(roomName), toC(roomKey), toC(authToken)),
     cloudSyncStart: (cs, address) => symbols.hk_cloud_sync_start(cs, toC(address)),
     cloudSyncStatus: (cs) => ptrToStringAndFree(symbols.hk_cloud_sync_status(cs)),
@@ -826,7 +826,7 @@ async function createNodeBindings(libPath: string): Promise<NativeBindings> {
     hk_doc_insert_reference: lib.func('int hk_doc_insert_reference(HK_Doc* doc, const char* key, const char* target_collection, const char* target_id)'),
 
     hk_cloud_sync_new: lib.func('HK_CloudSync* hk_cloud_sync_new(HK_Engine* engine, int32_t mode, const char* client_id, const char* room_name, const char* room_key, const char* auth_token)'),
-    hk_cloud_sync_server_new: lib.func('HK_CloudSync* hk_cloud_sync_server_new(HK_Engine* engine, const char* server_id, const char* auth_token)'),
+    hk_cloud_sync_server_new: lib.func('HK_CloudSync* hk_cloud_sync_server_new(HK_Engine* engine, const char* server_id, const char* auth_token, const char* room_name, const char* room_key)'),
     hk_cloud_sync_client_new: lib.func('HK_CloudSync* hk_cloud_sync_client_new(HK_Engine* engine, const char* client_id, const char* room_name, const char* room_key, const char* auth_token)'),
     hk_cloud_sync_start: lib.func('int hk_cloud_sync_start(HK_CloudSync* cloud_sync, const char* address)'),
     hk_cloud_sync_status: lib.func('HeapStr hk_cloud_sync_status(HK_CloudSync* cloud_sync)'),
@@ -994,7 +994,7 @@ async function createNodeBindings(libPath: string): Promise<NativeBindings> {
     netSyncerFree: (syncer) => fn.hk_net_syncer_free(syncer),
 
     cloudSyncNew: (engine, mode, clientId, roomName, roomKey, authToken) => fn.hk_cloud_sync_new(engine, mode, clientId, roomName, roomKey, authToken),
-    cloudSyncServerNew: (engine, serverId, authToken) => fn.hk_cloud_sync_server_new(engine, serverId, authToken),
+    cloudSyncServerNew: (engine, serverId, authToken, roomName, roomKey) => fn.hk_cloud_sync_server_new(engine, serverId, authToken, roomName, roomKey),
     cloudSyncClientNew: (engine, clientId, roomName, roomKey, authToken) => fn.hk_cloud_sync_client_new(engine, clientId, roomName, roomKey, authToken),
     cloudSyncStart: (cs, address) => fn.hk_cloud_sync_start(cs, address),
     cloudSyncStatus: (cs) => ptrToStringAndFree(fn.hk_cloud_sync_status(cs)),

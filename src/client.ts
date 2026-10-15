@@ -432,9 +432,9 @@ export class HakoClient {
    * room's collections under its own storage prefix and relaying sync only to
    * the members of that room.
    */
-  createCloudSyncServer(serverId: string | null = null, authToken: string | null = null): CloudSync {
+  createCloudSyncServer(serverId: string | null = null, authToken: string | null = null, roomName: string | null = null, roomKey: string | null = null): CloudSync {
     this.assertOpen();
-    const handle = this.native.cloudSyncServerNew(this.engine, serverId, authToken);
+    const handle = this.native.cloudSyncServerNew(this.engine, serverId, authToken, roomName, roomKey);
     if (!handle) {
       throw new Error(`cloudSyncServerNew failed: ${this.native.lastError()}`);
     }

@@ -17,6 +17,7 @@ FFI bindings over koffi/Bun (`native.ts`). Tauri lives in `@hakodb/tauri`
 | 0.5.17 | `hakodb v0.14.0` (`createTraverseIndex` + `findPaths` graph BFS over `hk_engine_find_paths`) |
 | 0.5.18 | `hakodb v0.15.0` (Phase B: `createEdgeIndex` + `shortestPaths` Dijkstra over `hk_engine_shortest_paths`) |
 | 0.5.19 | `hakodb v0.15.3` (native DLL refresh: ring-only TLS + shared sync framing) |
+| 0.5.20 | `hakodb v0.16.0` (`createCloudSyncServer` room params: `roomName`/`roomKey`) |
 
 ## Setup — native library
 
