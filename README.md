@@ -18,6 +18,8 @@ FFI bindings over koffi/Bun (`native.ts`). Tauri lives in `@hakodb/tauri`
 | 0.5.18 | `hakodb v0.15.0` (Phase B: `createEdgeIndex` + `shortestPaths` Dijkstra over `hk_engine_shortest_paths`) |
 | 0.5.19 | `hakodb v0.15.3` (native DLL refresh: ring-only TLS + shared sync framing) |
 | 0.5.20 | `hakodb v0.16.0` (`createCloudSyncServer` room params: `roomName`/`roomKey`) |
+| 0.5.21 | `hakodb v0.16.0` (Bun FFI arity fix) |
+| 0.5.22 | `hakodb v0.16.5` (schemas, versioned reads, quiescence, explain, elemMatch/allEq/near/traverse, raw C-ABI parity) |
 
 ## Setup — native library
 

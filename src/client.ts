@@ -65,13 +65,33 @@ export interface HakoClientOptions {
 // 2. FIXED: Added 'in' to the interface to match the Query class
 export interface QueryConstraint {
   field: string;
-  op: '==' | '!=' | '>' | '>=' | '<' | '<=' | 'match' | 'matchPrefix' | 'contains' | 'startsWith' | 'in' | 'not-in' | 'array-contains' | 'array-contains-any';
+  op: '==' | '!=' | '>' | '>=' | '<' | '<=' | 'match' | 'matchPrefix' | 'contains' | 'startsWith' | 'in' | 'not-in' | 'array-contains' | 'array-contains-any' | 'elemMatch' | 'arrayAllEq';
   value: any; // Use any because 'in' takes an array
+}
+
+/** One element-relative predicate for whereElemMatch (F3). */
+export interface ElemFilter {
+  field: string;
+  op: 'eq' | 'ne' | 'gt' | 'gte' | 'lt' | 'lte' | 'match' | 'match_prefix' | 'contains' | 'starts_with' | 'in' | 'not_in' | 'array_contains' | 'array_contains_any' | 'array_all_eq';
+  value: unknown;
 }
 
 export interface QueryOrder {
   field: string;
   ascending: boolean;
+}
+
+/** One declared field rule (F8). Kind names match the core wire format. */
+export interface HakoFieldRule {
+  name: string;
+  kind: 'string' | 'int' | 'float' | 'bool' | 'null' | 'array' | 'map' | 'bytes' | 'timestamp' | 'any';
+  required?: boolean;
+  default?: unknown;
+}
+
+/** Per-collection schema declaration (F8). Empty fields = no constraints. */
+export interface HakoSchema {
+  fields: HakoFieldRule[];
 }
 
 export type Unsubscribe = () => Promise<void>;
@@ -136,6 +156,31 @@ export class HakoConfig {
 
   setCompression(enabled: boolean, level: number = 3): this {
     this._native.configSetCompression(this._handle, enabled, level);
+    return this;
+  }
+
+  setGroupCommitIntervalMs(ms: number): this {
+    this._native.configSetGroupCommitIntervalMs(this._handle, ms);
+    return this;
+  }
+
+  setPageCacheCapacity(capacity: number): this {
+    this._native.configSetPageCacheCapacity(this._handle, capacity);
+    return this;
+  }
+
+  setSyncExcluded(...collections: string[]): this {
+    ensureOk(this._native.configSetSyncExcluded(this._handle, JSON.stringify(collections)), this._native, 'configSetSyncExcluded');
+    return this;
+  }
+
+  setLazyCollections(...collections: string[]): this {
+    ensureOk(this._native.configSetLazyCollections(this._handle, JSON.stringify(collections)), this._native, 'configSetLazyCollections');
+    return this;
+  }
+
+  setReplicationCollections(...collections: string[]): this {
+    ensureOk(this._native.configSetReplicationCollections(this._handle, JSON.stringify(collections)), this._native, 'configSetReplicationCollections');
     return this;
   }
 
@@ -399,6 +444,51 @@ export class HakoClient {
     this.assertOpen();
     const json = this.native.engineListCollections(this.engine);
     return json ? JSON.parse(json) : [];
+  }
+
+  /** Declare or replace a collection schema (F8). */
+  async setSchema(collection: string, schema: HakoSchema): Promise<void> {
+    this.assertOpen();
+    ensureOk(this.native.engineSetSchema(this.engine, collection, JSON.stringify(schema)), this.native, 'engineSetSchema');
+  }
+
+  /** Absent collection returns null, not an error. */
+  async getSchema(collection: string): Promise<HakoSchema | null> {
+    this.assertOpen();
+    const json = this.native.engineGetSchema(this.engine, collection);
+    return json ? (JSON.parse(json) as HakoSchema) : null;
+  }
+
+  async clearSchema(collection: string): Promise<void> {
+    this.assertOpen();
+    ensureOk(this.native.engineClearSchema(this.engine, collection), this.native, 'engineClearSchema');
+  }
+
+  async listSchemas(): Promise<Record<string, HakoSchema>> {
+    this.assertOpen();
+    const json = this.native.engineListSchemas(this.engine);
+    return json ? (JSON.parse(json) as Record<string, HakoSchema>) : {};
+  }
+
+  /** Read a doc and the commit version it was read at (F5). */
+  async getVersioned(collection: string, docId: string): Promise<{ snapshot: DocumentSnapshot; version: bigint } | null> {
+    this.assertOpen();
+    const { doc, version } = this.native.engineGetVersioned(this.engine, collection, docId);
+    if (!doc) return null;
+    const json = this.native.docToJson(doc);
+    return { snapshot: new DocumentSnapshot(docId, true, parseDocJson(json), doc), version };
+  }
+
+  /** Wait for background index/blob/maintenance work, bounded by timeoutMs. */
+  async awaitQuiescent(timeoutMs: number = 5000): Promise<boolean> {
+    this.assertOpen();
+    return this.native.engineAwaitQuiescent(this.engine, timeoutMs);
+  }
+
+  async quiescenceStatus(): Promise<Record<string, unknown> | null> {
+    this.assertOpen();
+    const json = this.native.engineQuiescenceStatus(this.engine);
+    return json ? (JSON.parse(json) as Record<string, unknown>) : null;
   }
 
   createNetSyncer(name: string, roomKey: string): NetSyncer {
@@ -733,6 +823,21 @@ export class Transaction {
     return new DocumentSnapshot(docId, true, parseDocJson(json));
   }
 
+  /** Batched read: one snapshot, output aligned with ids; missing ids are null. */
+  async getMany(collection: string, ids: string[]): Promise<(HakoDocData | null)[]> {
+    this.ensureActive();
+    const json = this.native.transactionGetMany(this.engine, this.handle, collection, JSON.stringify(ids));
+    if (json === null) throw new Error(`transactionGetMany: ${this.native.lastError()}`);
+    return JSON.parse(json) as (HakoDocData | null)[];
+  }
+
+  /** Merge-patch a doc inside the transaction (F5). */
+  patch(collection: string, docId: string, data: HakoDocData): this {
+    this.ensureActive();
+    ensureOk(this.native.transactionPatch(this.engine, this.handle, collection, docId, JSON.stringify(data)), this.native, 'transactionPatch');
+    return this;
+  }
+
   set(collection: string, docId: string, data: HakoDocData): this {
     this.ensureActive();
     const doc = toNativeDoc(this.native, data);
@@ -789,6 +894,28 @@ export class CollectionReference {
 
   async count(): Promise<number> {
     return new Query(this.client, this.name).count();
+  }
+
+  whereElemMatch(field: string, filters: ElemFilter[]): Query {
+    return new Query(this.client, this.name).whereElemMatch(field, filters);
+  }
+
+  whereArrayAllEq(field: string, value: unknown): Query {
+    return new Query(this.client, this.name).whereArrayAllEq(field, value);
+  }
+
+  whereNear(field: string, vec: number[] | Float32Array): Query {
+    return new Query(this.client, this.name).whereNear(field, vec);
+  }
+
+  whereTraverse(
+    startCol: string,
+    startId: string,
+    direction: TraverseDirection = 'outgoing',
+    edge: string | null = null,
+    maxDepth = 3
+  ): Query {
+    return new Query(this.client, this.name).whereTraverse(startCol, startId, direction, edge, maxDepth);
   }
 
   async createIndex(field: string): Promise<void> {
@@ -882,6 +1009,8 @@ private queryLimit?: number;
 private queryOffset?: number;
 private projection: string[] = [];
 private deferBlobsDef = false;
+private near?: { field: string; vec: Float32Array };
+private traverse?: { startCol: string; startId: string; direction: number; edge: string | null; maxDepth: number };
 
   constructor(private readonly client: HakoClient, private readonly collection: string) { }
 
@@ -945,6 +1074,37 @@ deferBlobs(defer = true): Query {
 this.deferBlobsDef = defer;
 return this;
 }
+
+  /** Array-of-objects predicate: every element must match all filters (F3). */
+  whereElemMatch(field: string, filters: ElemFilter[]): Query {
+    this.filters.push({ field, op: 'elemMatch', value: filters });
+    return this;
+  }
+
+  /** Array predicate: every element equals value (scalar JSON) (F3). */
+  whereArrayAllEq(field: string, value: unknown): Query {
+    this.filters.push({ field, op: 'arrayAllEq', value });
+    return this;
+  }
+
+  /** KNN marker; the result cap rides limit() (F3). */
+  whereNear(field: string, vec: number[] | Float32Array): Query {
+    this.near = { field, vec: vec instanceof Float32Array ? vec : Float32Array.from(vec) };
+    return this;
+  }
+
+  /** BFS graph marker; edge null = any reference field (F3). */
+  whereTraverse(
+    startCol: string,
+    startId: string,
+    direction: TraverseDirection = 'outgoing',
+    edge: string | null = null,
+    maxDepth = 3
+  ): Query {
+    const dir = direction === 'incoming' ? 1 : direction === 'both' ? 2 : 0;
+    this.traverse = { startCol, startId, direction: dir, edge, maxDepth };
+    return this;
+  }
 
   private prepareNativeQuery(): unknown {
     const native = this.client.nativeBindings();
@@ -1010,6 +1170,12 @@ return this;
             if (typeof filter.value === 'string') ensureOk(native.queryWhereArrayContainsStr(handle, filter.field, filter.value), native, 'queryWhereArrayContainsStr');
             else ensureOk(native.queryWhereArrayContainsInt(handle, filter.field, filter.value), native, 'queryWhereArrayContainsInt');
             break;
+          case 'elemMatch':
+            ensureOk(native.queryWhereElemMatch(handle, filter.field, JSON.stringify(filter.value)), native, 'queryWhereElemMatch');
+            break;
+          case 'arrayAllEq':
+            ensureOk(native.queryWhereArrayAllEq(handle, filter.field, JSON.stringify(filter.value)), native, 'queryWhereArrayAllEq');
+            break;
         }
       }
 
@@ -1037,6 +1203,12 @@ return this;
         ensureOk(native.queryEndBefore(handle, this._endBeforeSnapshot._nativeHandle), native, 'queryEndBefore');
       }
 
+      if (this.near) ensureOk(native.queryWhereNear(handle, this.near.field, this.near.vec), native, 'queryWhereNear');
+      if (this.traverse) {
+        const t = this.traverse;
+        ensureOk(native.queryWhereTraverse(handle, t.startCol, t.startId, t.direction, t.edge, t.maxDepth), native, 'queryWhereTraverse');
+      }
+
       if (this.order) ensureOk(native.queryOrderBy(handle, this.order.field, this.order.ascending), native, 'queryOrderBy');
       if (this.queryLimit !== undefined) ensureOk(native.queryLimit(handle, this.queryLimit), native, 'queryLimit');
       if (this.queryOffset !== undefined) ensureOk(native.queryOffset(handle, this.queryOffset), native, 'queryOffset');
@@ -1055,6 +1227,18 @@ return this;
     const handle = this.prepareNativeQuery();
     try {
       return parseQueryRows(native.queryExecute(this.client.engineHandle(), handle));
+    } finally {
+      native.queryFree(handle);
+    }
+  }
+
+  /** Query plan JSON without executing the scan (F7). */
+  async explain(): Promise<Record<string, unknown> | null> {
+    const native = this.client.nativeBindings();
+    const handle = this.prepareNativeQuery();
+    try {
+      const json = native.queryExplain(this.client.engineHandle(), handle);
+      return json ? (JSON.parse(json) as Record<string, unknown>) : null;
     } finally {
       native.queryFree(handle);
     }
