@@ -218,6 +218,66 @@ export interface NativeBindings {
   queryEndAt(query: Handle, anchorDoc: Handle): number;
   queryEndBefore(query: Handle, anchorDoc: Handle): number;
 
+  // Unix-only hk_socket_sync_* is deliberately absent: Windows builds omit
+  // the symbol, so binding it unconditionally would break koffi on Windows.
+
+  // F8: per-collection schemas over the C ABI.
+  engineSetSchema(engine: Handle, collection: string, schemaJson: string): number;
+  engineGetSchema(engine: Handle, collection: string): string | null;
+  engineClearSchema(engine: Handle, collection: string): number;
+  engineListSchemas(engine: Handle): string | null;
+
+  // F5: versioned reads, transaction patch/get_many, retry classification.
+  engineGetVersioned(engine: Handle, collection: string, docId: string): { doc: Handle; version: bigint };
+  transactionGetMany(engine: Handle, tx: Handle, collection: string, idsJson: string): string | null;
+  transactionPatch(engine: Handle, tx: Handle, collection: string, docId: string, updatesJson: string): number;
+  errorLastKind(): number;
+  errorIsRetryable(): boolean;
+
+  // F7/F3: explain + array/graph predicates.
+  queryExplain(engine: Handle, query: Handle): string | null;
+  queryWhereArrayAllEq(query: Handle, field: string, valueJson: string): number;
+  queryWhereElemMatch(query: Handle, field: string, filtersJson: string): number;
+  queryWhereNear(query: Handle, field: string, vec: Float32Array): number;
+  queryWhereTraverse(query: Handle, startCol: string, startId: string, direction: number, edge: string | null, maxDepth: number): number;
+
+  // F4: aggregation pipeline (raw handle; typed builder is separate work).
+  pipelineNew(collection: string): Handle;
+  pipelineFree(pipeline: Handle): void;
+  pipelineMatch(pipeline: Handle, query: Handle): number;
+  pipelineProject(pipeline: Handle, fieldsJson: string): number;
+  pipelineSort(pipeline: Handle, field: string, ascending: boolean): number;
+  pipelineLimit(pipeline: Handle, limit: number): number;
+  pipelineOffset(pipeline: Handle, offset: number): number;
+  pipelineUnwind(pipeline: Handle, field: string): number;
+  pipelineGroup(pipeline: Handle, key: string, accumsJson: string): number;
+  pipelineExecute(engine: Handle, pipeline: Handle): string | null;
+  pipelineExecuteToHandles(engine: Handle, pipeline: Handle): Handle;
+
+  // Config additions (0.12-0.16 core knobs).
+  configSetGroupCommitIntervalMs(config: Handle, ms: number | bigint): void;
+  configSetPageCacheCapacity(config: Handle, capacity: number): void;
+  configSetSyncExcluded(config: Handle, collectionsJson: string): number;
+  configSetLazyCollections(config: Handle, collectionsJson: string): number;
+  configSetReplicationCollections(config: Handle, collectionsJson: string): number;
+
+  // Quiescence / diagnostics / logging.
+  engineAwaitQuiescent(engine: Handle, timeoutMs: number | bigint): boolean;
+  engineQuiescenceStatus(engine: Handle): string | null;
+  debugWriteStats(): string | null;
+  logEnableStderr(): void;
+  logDisableStderr(): void;
+
+  // Lazy cursor walks: callbacks copy immediately; returning false stops.
+  cursorWalk(engine: Handle, query: Handle, callback: (id: string, bytes: Uint8Array) => boolean): number;
+  cursorWalkView(engine: Handle, query: Handle, callback: (id: string, view: Handle) => boolean): number;
+
+  // Borrowed raw/view reads: copied before return (lifetime is the result set/view).
+  rawDocBytes(rawDoc: Handle): Uint8Array | null;
+  rawDocId(rawDoc: Handle): string | null;
+  viewGetStr(view: Handle, key: string): string | null;
+  viewGetBytes(view: Handle, key: string): Uint8Array | null;
+
   lastError(): string;
 }
 
@@ -242,7 +302,7 @@ function resolveLibraryPath(explicitPath?: string): string {
 
 async function createBunBindings(libPath: string): Promise<NativeBindings> {
   const ffi = await import('bun:ffi');
-  const { dlopen, FFIType, CString, JSCallback } = ffi as any;
+  const { dlopen, FFIType, CString, JSCallback, toArrayBuffer } = ffi as any;
 
   const symbols = dlopen(libPath, {
     hk_engine_open: { args: [FFIType.cstring], returns: FFIType.ptr },
@@ -406,6 +466,50 @@ async function createBunBindings(libPath: string): Promise<NativeBindings> {
     hk_cloud_sync_status: { args: [FFIType.ptr], returns: FFIType.ptr },
     hk_cloud_sync_stop: { args: [FFIType.ptr], returns: FFIType.void },
     hk_cloud_sync_free: { args: [FFIType.ptr], returns: FFIType.void },
+
+    // 0.16.5 parity: F8 schemas, F5 versioned/tx, F7 explain, F3 predicates,
+    // F4 pipelines, config knobs, quiescence, lazy walks and borrowed reads.
+    hk_config_set_group_commit_interval_ms: { args: [FFIType.ptr, FFIType.u64], returns: FFIType.void },
+    hk_config_set_page_cache_capacity: { args: [FFIType.ptr, FFIType.usize], returns: FFIType.void },
+    hk_config_set_sync_excluded: { args: [FFIType.ptr, FFIType.cstring], returns: FFIType.i32 },
+    hk_config_set_lazy_collections: { args: [FFIType.ptr, FFIType.cstring], returns: FFIType.i32 },
+    hk_config_set_replication_collections: { args: [FFIType.ptr, FFIType.cstring], returns: FFIType.i32 },
+    hk_engine_await_quiescent: { args: [FFIType.ptr, FFIType.u64], returns: FFIType.bool },
+    hk_engine_quiescence_status: { args: [FFIType.ptr], returns: FFIType.ptr },
+    hk_engine_get_versioned: { args: [FFIType.ptr, FFIType.cstring, FFIType.cstring, FFIType.ptr], returns: FFIType.ptr },
+    hk_engine_set_schema: { args: [FFIType.ptr, FFIType.cstring, FFIType.cstring], returns: FFIType.i32 },
+    hk_engine_get_schema: { args: [FFIType.ptr, FFIType.cstring], returns: FFIType.ptr },
+    hk_engine_clear_schema: { args: [FFIType.ptr, FFIType.cstring], returns: FFIType.i32 },
+    hk_engine_list_schemas: { args: [FFIType.ptr], returns: FFIType.ptr },
+    hk_query_explain: { args: [FFIType.ptr, FFIType.ptr], returns: FFIType.ptr },
+    hk_query_where_array_all_eq: { args: [FFIType.ptr, FFIType.cstring, FFIType.cstring], returns: FFIType.i32 },
+    hk_query_where_elem_match: { args: [FFIType.ptr, FFIType.cstring, FFIType.cstring], returns: FFIType.i32 },
+    hk_query_where_near: { args: [FFIType.ptr, FFIType.cstring, FFIType.ptr, FFIType.usize], returns: FFIType.i32 },
+    hk_query_where_traverse: { args: [FFIType.ptr, FFIType.cstring, FFIType.cstring, FFIType.u32, FFIType.cstring, FFIType.usize], returns: FFIType.i32 },
+    hk_pipeline_new: { args: [FFIType.cstring], returns: FFIType.ptr },
+    hk_pipeline_free: { args: [FFIType.ptr], returns: FFIType.void },
+    hk_pipeline_match: { args: [FFIType.ptr, FFIType.ptr], returns: FFIType.i32 },
+    hk_pipeline_project: { args: [FFIType.ptr, FFIType.cstring], returns: FFIType.i32 },
+    hk_pipeline_sort: { args: [FFIType.ptr, FFIType.cstring, FFIType.bool], returns: FFIType.i32 },
+    hk_pipeline_limit: { args: [FFIType.ptr, FFIType.usize], returns: FFIType.i32 },
+    hk_pipeline_offset: { args: [FFIType.ptr, FFIType.usize], returns: FFIType.i32 },
+    hk_pipeline_unwind: { args: [FFIType.ptr, FFIType.cstring], returns: FFIType.i32 },
+    hk_pipeline_group: { args: [FFIType.ptr, FFIType.cstring, FFIType.cstring], returns: FFIType.i32 },
+    hk_pipeline_execute: { args: [FFIType.ptr, FFIType.ptr], returns: FFIType.ptr },
+    hk_pipeline_execute_to_handles: { args: [FFIType.ptr, FFIType.ptr], returns: FFIType.ptr },
+    hk_transaction_get_many: { args: [FFIType.ptr, FFIType.ptr, FFIType.cstring, FFIType.cstring], returns: FFIType.ptr },
+    hk_transaction_patch: { args: [FFIType.ptr, FFIType.ptr, FFIType.cstring, FFIType.cstring, FFIType.cstring], returns: FFIType.i32 },
+    hk_error_last_kind: { args: [], returns: FFIType.i32 },
+    hk_error_is_retryable: { args: [], returns: FFIType.bool },
+    hk_debug_write_stats: { args: [], returns: FFIType.ptr },
+    hk_log_enable_stderr: { args: [], returns: FFIType.void },
+    hk_log_disable_stderr: { args: [], returns: FFIType.void },
+    hk_cursor_walk: { args: [FFIType.ptr, FFIType.ptr, FFIType.function, FFIType.ptr], returns: FFIType.i64 },
+    hk_cursor_walk_view: { args: [FFIType.ptr, FFIType.ptr, FFIType.function, FFIType.ptr], returns: FFIType.i64 },
+    hk_rawdoc_bytes: { args: [FFIType.ptr, FFIType.ptr], returns: FFIType.ptr },
+    hk_rawdoc_id: { args: [FFIType.ptr, FFIType.ptr], returns: FFIType.ptr },
+    hk_view_get_str: { args: [FFIType.ptr, FFIType.cstring, FFIType.ptr], returns: FFIType.ptr },
+    hk_view_get_bytes: { args: [FFIType.ptr, FFIType.cstring, FFIType.ptr], returns: FFIType.ptr },
 
     // ================= ERRORS =================
     hk_last_error: { args: [], returns: FFIType.ptr },
@@ -622,6 +726,82 @@ async function createBunBindings(libPath: string): Promise<NativeBindings> {
     queryEndAt: (query, anchorDoc) => symbols.hk_query_end_at(query, anchorDoc),
     queryEndBefore: (query, anchorDoc) => symbols.hk_query_end_before(query, anchorDoc),
 
+    // 0.16.5 parity.
+    engineSetSchema: (e, c, json) => symbols.hk_engine_set_schema(e, toC(c), toC(json)),
+    engineGetSchema: (e, c) => ptrToStringAndFree(symbols.hk_engine_get_schema(e, toC(c))),
+    engineClearSchema: (e, c) => symbols.hk_engine_clear_schema(e, toC(c)),
+    engineListSchemas: (e) => ptrToStringAndFree(symbols.hk_engine_list_schemas(e)),
+    engineGetVersioned: (e, c, id) => {
+      const out = new BigInt64Array(1);
+      const doc = symbols.hk_engine_get_versioned(e, toC(c), toC(id), ptrOf(out));
+      return { doc, version: out[0] };
+    },
+    engineAwaitQuiescent: (e, ms) => symbols.hk_engine_await_quiescent(e, BigInt(ms)),
+    engineQuiescenceStatus: (e) => ptrToStringAndFree(symbols.hk_engine_quiescence_status(e)),
+    transactionGetMany: (e, tx, c, idsJson) => ptrToStringAndFree(symbols.hk_transaction_get_many(e, tx, toC(c), toC(idsJson))),
+    transactionPatch: (e, tx, c, id, updatesJson) => symbols.hk_transaction_patch(e, tx, toC(c), toC(id), toC(updatesJson)),
+    errorLastKind: () => symbols.hk_error_last_kind(),
+    errorIsRetryable: () => symbols.hk_error_is_retryable(),
+    debugWriteStats: () => ptrToStringAndFree(symbols.hk_debug_write_stats()),
+    logEnableStderr: () => symbols.hk_log_enable_stderr(),
+    logDisableStderr: () => symbols.hk_log_disable_stderr(),
+    queryExplain: (e, q) => ptrToStringAndFree(symbols.hk_query_explain(e, q)),
+    queryWhereArrayAllEq: (q, f, json) => symbols.hk_query_where_array_all_eq(q, toC(f), toC(json)),
+    queryWhereElemMatch: (q, f, json) => symbols.hk_query_where_elem_match(q, toC(f), toC(json)),
+    queryWhereNear: (q, f, vec) => symbols.hk_query_where_near(q, toC(f), vec, vec.length),
+    queryWhereTraverse: (q, sc, sid, dir, edge, depth) => symbols.hk_query_where_traverse(q, toC(sc), toC(sid), dir, edge === null ? null : toC(edge), depth),
+    pipelineNew: (c) => symbols.hk_pipeline_new(toC(c)),
+    pipelineFree: (p) => symbols.hk_pipeline_free(p),
+    pipelineMatch: (p, q) => symbols.hk_pipeline_match(p, q),
+    pipelineProject: (p, json) => symbols.hk_pipeline_project(p, toC(json)),
+    pipelineSort: (p, f, asc) => symbols.hk_pipeline_sort(p, toC(f), asc),
+    pipelineLimit: (p, n) => symbols.hk_pipeline_limit(p, n),
+    pipelineOffset: (p, n) => symbols.hk_pipeline_offset(p, n),
+    pipelineUnwind: (p, f) => symbols.hk_pipeline_unwind(p, toC(f)),
+    pipelineGroup: (p, k, json) => symbols.hk_pipeline_group(p, toC(k), toC(json)),
+    pipelineExecute: (e, p) => ptrToStringAndFree(symbols.hk_pipeline_execute(e, p)),
+    pipelineExecuteToHandles: (e, p) => symbols.hk_pipeline_execute_to_handles(e, p),
+    configSetGroupCommitIntervalMs: (c, ms) => symbols.hk_config_set_group_commit_interval_ms(c, BigInt(ms)),
+    configSetPageCacheCapacity: (c, n) => symbols.hk_config_set_page_cache_capacity(c, n),
+    configSetSyncExcluded: (c, json) => symbols.hk_config_set_sync_excluded(c, toC(json)),
+    configSetLazyCollections: (c, json) => symbols.hk_config_set_lazy_collections(c, toC(json)),
+    configSetReplicationCollections: (c, json) => symbols.hk_config_set_replication_collections(c, toC(json)),
+    cursorWalk: (e, q, callback) => {
+      const cb = new JSCallback((idPtr: any, idLen: number, bytesPtr: any, bytesLen: number) => {
+        const id = new TextDecoder().decode(new Uint8Array(toArrayBuffer(idPtr, 0, Number(idLen))).slice());
+        const bytes = new Uint8Array(toArrayBuffer(bytesPtr, 0, Number(bytesLen))).slice();
+        return callback(id, bytes);
+      }, { args: [FFIType.ptr, FFIType.usize, FFIType.ptr, FFIType.usize, FFIType.ptr], returns: FFIType.bool });
+      return Number(symbols.hk_cursor_walk(e, q, cb, null));
+    },
+    cursorWalkView: (e, q, callback) => {
+      const cb = new JSCallback((idPtr: any, idLen: number, view: any) => {
+        const id = new TextDecoder().decode(new Uint8Array(toArrayBuffer(idPtr, 0, Number(idLen))).slice());
+        return callback(id, view);
+      }, { args: [FFIType.ptr, FFIType.usize, FFIType.ptr, FFIType.ptr], returns: FFIType.bool });
+      return Number(symbols.hk_cursor_walk_view(e, q, cb, null));
+    },
+    rawDocBytes: (raw) => {
+      const len = new BigInt64Array(1);
+      const ptr = symbols.hk_rawdoc_bytes(raw, ptrOf(len));
+      return ptr ? new Uint8Array(toArrayBuffer(ptr, 0, Number(len[0]))).slice() : null;
+    },
+    rawDocId: (raw) => {
+      const len = new BigInt64Array(1);
+      const ptr = symbols.hk_rawdoc_id(raw, ptrOf(len));
+      return ptr ? new TextDecoder().decode(new Uint8Array(toArrayBuffer(ptr, 0, Number(len[0]))).slice()) : null;
+    },
+    viewGetStr: (view, key) => {
+      const len = new BigInt64Array(1);
+      const ptr = symbols.hk_view_get_str(view, toC(key), ptrOf(len));
+      return ptr ? new TextDecoder().decode(new Uint8Array(toArrayBuffer(ptr, 0, Number(len[0]))).slice()) : null;
+    },
+    viewGetBytes: (view, key) => {
+      const len = new BigInt64Array(1);
+      const ptr = symbols.hk_view_get_bytes(view, toC(key), ptrOf(len));
+      return ptr ? new Uint8Array(toArrayBuffer(ptr, 0, Number(len[0]))).slice() : null;
+    },
+
     lastError: () => {
       const ptr = symbols.hk_last_error();
       return ptr ? new CString(ptr).toString() : 'unknown ffi error';
@@ -638,7 +818,7 @@ async function createNodeBindings(libPath: string): Promise<NativeBindings> {
   // these EVERY struct-typed decl throws at bindings creation, i.e. the
   // node backend was dead on arrival (bun resolves pointers structurally
   // and never noticed). Declared once here for all present and future fns.
-  for (const t of ['HK_Array', 'HK_Batch', 'HK_CloudSync', 'HK_Config', 'HK_Doc', 'HK_Engine', 'HK_NetSyncer', 'HK_Query', 'HK_RawDoc', 'HK_RawResultSet', 'HK_ResultSet', 'HK_Transaction', 'HK_ViewDoc', 'HK_Watch']) koffi.opaque(t);
+  for (const t of ['HK_Array', 'HK_Batch', 'HK_CloudSync', 'HK_Config', 'HK_Doc', 'HK_Engine', 'HK_NetSyncer', 'HK_Pipeline', 'HK_Query', 'HK_RawDoc', 'HK_RawResultSet', 'HK_ResultSet', 'HK_Transaction', 'HK_ViewDoc', 'HK_Watch']) koffi.opaque(t);
 
   // ponytail: owned C strings (Rust-allocated) must come back through a
   // DISPOSABLE type wired to hk_string_free — never bare char* (koffi
@@ -652,6 +832,9 @@ async function createNodeBindings(libPath: string): Promise<NativeBindings> {
   // hako.h). Kept as documentation; register() below takes the
   // typedef NAME as a string, not this proto object.
   const OnSnapshotCB = koffi.proto('void HK_OnSnapshotCallback(const char *collection, const char *path, int32_t kind, void *user_data)');
+  // ids are length-delimited (not NUL-terminated): take them as raw bytes.
+  const WalkCB = koffi.proto('bool HkWalkCallback(const uint8_t *id, size_t id_len, const uint8_t *bytes, size_t bytes_len, void *userdata)');
+  const ViewWalkCB = koffi.proto('bool HkViewWalkCallback(const uint8_t *id, size_t id_len, const HK_ViewDoc *view, void *userdata)');
 
   const fn = {
     hk_engine_open: lib.func('HK_Engine* hk_engine_open(const char* path)'),
@@ -832,6 +1015,52 @@ async function createNodeBindings(libPath: string): Promise<NativeBindings> {
     hk_cloud_sync_status: lib.func('HeapStr hk_cloud_sync_status(HK_CloudSync* cloud_sync)'),
     hk_cloud_sync_stop: lib.func('void hk_cloud_sync_stop(HK_CloudSync* cloud_sync)'),
     hk_cloud_sync_free: lib.func('void hk_cloud_sync_free(HK_CloudSync* cloud_sync)'),
+
+    // 0.16.5 parity: F8 schemas, F5 versioned/tx, F7 explain, F3 predicates,
+    // F4 pipelines, config knobs, quiescence, lazy walks and borrowed reads.
+    hk_config_set_group_commit_interval_ms: lib.func('void hk_config_set_group_commit_interval_ms(HK_Config* config, uint64_t ms)'),
+    hk_config_set_page_cache_capacity: lib.func('void hk_config_set_page_cache_capacity(HK_Config* config, size_t capacity)'),
+    hk_config_set_sync_excluded: lib.func('int hk_config_set_sync_excluded(HK_Config* config, const char* collections_json)'),
+    hk_config_set_lazy_collections: lib.func('int hk_config_set_lazy_collections(HK_Config* config, const char* collections_json)'),
+    hk_config_set_replication_collections: lib.func('int hk_config_set_replication_collections(HK_Config* config, const char* collections_json)'),
+    hk_engine_await_quiescent: lib.func('bool hk_engine_await_quiescent(HK_Engine* engine, uint64_t timeout_ms)'),
+    hk_engine_quiescence_status: lib.func('HeapStr hk_engine_quiescence_status(HK_Engine* engine)'),
+    hk_engine_get_versioned: lib.func('HK_Doc* hk_engine_get_versioned(HK_Engine* engine, const char* collection, const char* doc_id, _Out_ uint64_t *out_version)'),
+    hk_engine_set_schema: lib.func('int hk_engine_set_schema(HK_Engine* engine, const char* collection, const char* schema_json)'),
+    hk_engine_get_schema: lib.func('HeapStr hk_engine_get_schema(HK_Engine* engine, const char* collection)'),
+    hk_engine_clear_schema: lib.func('int hk_engine_clear_schema(HK_Engine* engine, const char* collection)'),
+    hk_engine_list_schemas: lib.func('HeapStr hk_engine_list_schemas(HK_Engine* engine)'),
+    hk_query_explain: lib.func('HeapStr hk_query_explain(HK_Engine* engine, const HK_Query* query)'),
+    hk_query_where_array_all_eq: lib.func('int hk_query_where_array_all_eq(HK_Query* query, const char* field, const char* value_json)'),
+    hk_query_where_elem_match: lib.func('int hk_query_where_elem_match(HK_Query* query, const char* field, const char* filters_json)'),
+    hk_query_where_near: lib.func('int hk_query_where_near(HK_Query* query, const char* field, const float* vec, size_t len)'),
+    hk_query_where_traverse: lib.func('int hk_query_where_traverse(HK_Query* query, const char* start_col, const char* start_id, uint32_t direction, const char* edge_field, size_t max_depth)'),
+    hk_pipeline_new: lib.func('HK_Pipeline* hk_pipeline_new(const char* collection)'),
+    hk_pipeline_free: lib.func('void hk_pipeline_free(HK_Pipeline* pipeline)'),
+    hk_pipeline_match: lib.func('int hk_pipeline_match(HK_Pipeline* pipeline, const HK_Query* query)'),
+    hk_pipeline_project: lib.func('int hk_pipeline_project(HK_Pipeline* pipeline, const char* fields_json)'),
+    hk_pipeline_sort: lib.func('int hk_pipeline_sort(HK_Pipeline* pipeline, const char* field, bool ascending)'),
+    hk_pipeline_limit: lib.func('int hk_pipeline_limit(HK_Pipeline* pipeline, size_t limit)'),
+    hk_pipeline_offset: lib.func('int hk_pipeline_offset(HK_Pipeline* pipeline, size_t offset)'),
+    hk_pipeline_unwind: lib.func('int hk_pipeline_unwind(HK_Pipeline* pipeline, const char* field)'),
+    hk_pipeline_group: lib.func('int hk_pipeline_group(HK_Pipeline* pipeline, const char* key, const char* accums_json)'),
+    hk_pipeline_execute: lib.func('HeapStr hk_pipeline_execute(HK_Engine* engine, const HK_Pipeline* pipeline)'),
+    hk_pipeline_execute_to_handles: lib.func('HK_ResultSet* hk_pipeline_execute_to_handles(HK_Engine* engine, const HK_Pipeline* pipeline)'),
+    hk_transaction_get_many: lib.func('HeapStr hk_transaction_get_many(HK_Engine* engine, HK_Transaction* tx, const char* collection, const char* ids_json)'),
+    hk_transaction_patch: lib.func('int hk_transaction_patch(HK_Engine* engine, HK_Transaction* tx, const char* collection, const char* doc_id, const char* updates_json)'),
+    hk_error_last_kind: lib.func('int hk_error_last_kind()'),
+    hk_error_is_retryable: lib.func('bool hk_error_is_retryable()'),
+    hk_debug_write_stats: lib.func('HeapStr hk_debug_write_stats()'),
+    hk_log_enable_stderr: lib.func('void hk_log_enable_stderr()'),
+    hk_log_disable_stderr: lib.func('void hk_log_disable_stderr()'),
+    hk_cursor_walk: lib.func('int64_t hk_cursor_walk(HK_Engine* engine, const HK_Query* query, HkWalkCallback* callback, void* userdata)'),
+    hk_cursor_walk_view: lib.func('int64_t hk_cursor_walk_view(HK_Engine* engine, const HK_Query* query, HkViewWalkCallback* callback, void* userdata)'),
+    hk_rawdoc_bytes: lib.func('const uint8_t* hk_rawdoc_bytes(const HK_RawDoc* doc, _Out_ uintptr_t *len_out)'),
+    // Return as uint8_t* so koffi hands back a pointer; the id is
+    // length-delimited, not NUL-terminated.
+    hk_rawdoc_id: lib.func('const uint8_t* hk_rawdoc_id(const HK_RawDoc* doc, _Out_ uintptr_t *len_out)'),
+    hk_view_get_str: lib.func('const uint8_t* hk_view_get_str(const HK_ViewDoc* view, const char* key, _Out_ uintptr_t *len_out)'),
+    hk_view_get_bytes: lib.func('const uint8_t* hk_view_get_bytes(const HK_ViewDoc* view, const char* key, _Out_ uintptr_t *len_out)'),
 
     hk_last_error: lib.func('const char* hk_last_error()'),
     hk_string_free: lib.func('void hk_string_free(void* value)')
@@ -1037,6 +1266,82 @@ async function createNodeBindings(libPath: string): Promise<NativeBindings> {
     queryStartAt: (query, anchorDoc) => fn.hk_query_start_at(query, anchorDoc),
     queryEndAt: (query, anchorDoc) => fn.hk_query_end_at(query, anchorDoc),
     queryEndBefore: (query, anchorDoc) => fn.hk_query_end_before(query, anchorDoc),
+
+    // 0.16.5 parity.
+    engineSetSchema: (e, c, json) => fn.hk_engine_set_schema(e, c, json),
+    engineGetSchema: (e, c) => ptrToStringAndFree(fn.hk_engine_get_schema(e, c)),
+    engineClearSchema: (e, c) => fn.hk_engine_clear_schema(e, c),
+    engineListSchemas: (e) => ptrToStringAndFree(fn.hk_engine_list_schemas(e)),
+    engineGetVersioned: (e, c, id) => {
+      const out: bigint[] = [0n];
+      const doc = fn.hk_engine_get_versioned(e, c, id, out);
+      return { doc, version: out[0] };
+    },
+    engineAwaitQuiescent: (e, ms) => fn.hk_engine_await_quiescent(e, ms),
+    engineQuiescenceStatus: (e) => ptrToStringAndFree(fn.hk_engine_quiescence_status(e)),
+    transactionGetMany: (e, tx, c, idsJson) => ptrToStringAndFree(fn.hk_transaction_get_many(e, tx, c, idsJson)),
+    transactionPatch: (e, tx, c, id, updatesJson) => fn.hk_transaction_patch(e, tx, c, id, updatesJson),
+    errorLastKind: () => fn.hk_error_last_kind(),
+    errorIsRetryable: () => fn.hk_error_is_retryable(),
+    debugWriteStats: () => ptrToStringAndFree(fn.hk_debug_write_stats()),
+    logEnableStderr: () => fn.hk_log_enable_stderr(),
+    logDisableStderr: () => fn.hk_log_disable_stderr(),
+    queryExplain: (e, q) => ptrToStringAndFree(fn.hk_query_explain(e, q)),
+    queryWhereArrayAllEq: (q, f, json) => fn.hk_query_where_array_all_eq(q, f, json),
+    queryWhereElemMatch: (q, f, json) => fn.hk_query_where_elem_match(q, f, json),
+    queryWhereNear: (q, f, vec) => fn.hk_query_where_near(q, f, Buffer.from(vec.buffer, vec.byteOffset, vec.byteLength), vec.length),
+    queryWhereTraverse: (q, sc, sid, dir, edge, depth) => fn.hk_query_where_traverse(q, sc, sid, dir, edge, depth),
+    pipelineNew: (c) => fn.hk_pipeline_new(c),
+    pipelineFree: (p) => fn.hk_pipeline_free(p),
+    pipelineMatch: (p, q) => fn.hk_pipeline_match(p, q),
+    pipelineProject: (p, json) => fn.hk_pipeline_project(p, json),
+    pipelineSort: (p, f, asc) => fn.hk_pipeline_sort(p, f, asc),
+    pipelineLimit: (p, n) => fn.hk_pipeline_limit(p, n),
+    pipelineOffset: (p, n) => fn.hk_pipeline_offset(p, n),
+    pipelineUnwind: (p, f) => fn.hk_pipeline_unwind(p, f),
+    pipelineGroup: (p, k, json) => fn.hk_pipeline_group(p, k, json),
+    pipelineExecute: (e, p) => ptrToStringAndFree(fn.hk_pipeline_execute(e, p)),
+    pipelineExecuteToHandles: (e, p) => fn.hk_pipeline_execute_to_handles(e, p),
+    configSetGroupCommitIntervalMs: (c, ms) => fn.hk_config_set_group_commit_interval_ms(c, ms),
+    configSetPageCacheCapacity: (c, n) => fn.hk_config_set_page_cache_capacity(c, n),
+    configSetSyncExcluded: (c, json) => fn.hk_config_set_sync_excluded(c, json),
+    configSetLazyCollections: (c, json) => fn.hk_config_set_lazy_collections(c, json),
+    configSetReplicationCollections: (c, json) => fn.hk_config_set_replication_collections(c, json),
+    cursorWalk: (e, q, callback) => {
+      const wrapper = (id: any, idLen: number, bytes: any, bytesLen: number) => {
+        const rowId = new TextDecoder().decode(Uint8Array.from(koffi.decode(id, 'uint8_t', Number(idLen))));
+        const rowBytes = Uint8Array.from(koffi.decode(bytes, 'uint8_t', Number(bytesLen)));
+        return callback(rowId, rowBytes);
+      };
+      return Number(fn.hk_cursor_walk(e, q, koffi.register(wrapper, 'HkWalkCallback *'), null));
+    },
+    cursorWalkView: (e, q, callback) => {
+      const wrapper = (id: any, idLen: number, view: any) => {
+        const rowId = new TextDecoder().decode(Uint8Array.from(koffi.decode(id, 'uint8_t', Number(idLen))));
+        return callback(rowId, view);
+      };
+      return Number(fn.hk_cursor_walk_view(e, q, koffi.register(wrapper, 'HkViewWalkCallback *'), null));
+    },
+    rawDocBytes: (raw) => {
+      const len: number[] = [0];
+      const ptr = fn.hk_rawdoc_bytes(raw, len);
+      return ptr ? Uint8Array.from(koffi.decode(ptr, 'uint8_t', Number(len[0]))) : null;
+    },
+    rawDocId: (raw) => {
+      const len: number[] = [0];
+      const ptr = fn.hk_rawdoc_id(raw, len);
+      return ptr ? new TextDecoder().decode(Uint8Array.from(koffi.decode(ptr, 'uint8_t', Number(len[0])))) : null;
+    },
+    viewGetStr: (view, key) => {
+      const len: number[] = [0];
+      const ptr = fn.hk_view_get_str(view, key, len);
+      return ptr ? new TextDecoder().decode(Uint8Array.from(koffi.decode(ptr, 'uint8_t', Number(len[0])))) : null;
+    },
+    viewGetBytes: (view, key) => {
+      const len: number[] = [0];
+      const ptr = fn.hk_view_get_bytes(view, key, len);
+      return ptr ? Uint8Array.from(koffi.decode(ptr, 'uint8_t', Number(len[0]))) : null;
+    },
 
     lastError: () => (fn.hk_last_error() as string) || 'unknown ffi error'
   };
