@@ -373,6 +373,27 @@ export class ViewDocSnapshot {
     return this.client.nativeBindings().viewGetBool(this.handle, field);
   }
 
+  /** Dotted-path pulls (core 0.18+): `a.b.c` reads without a full decode. */
+  getPathInt(path: string): number | bigint | null {
+    return this.client.nativeBindings().viewGetPathInt(this.handle, path);
+  }
+
+  getPathFloat(path: string): number | null {
+    return this.client.nativeBindings().viewGetPathFloat(this.handle, path);
+  }
+
+  getPathBool(path: string): boolean | null {
+    return this.client.nativeBindings().viewGetPathBool(this.handle, path);
+  }
+
+  getPathString(path: string): string | null {
+    return this.client.nativeBindings().viewGetPathStr(this.handle, path);
+  }
+
+  getPathBytes(path: string): Uint8Array | null {
+    return this.client.nativeBindings().viewGetPathBytes(this.handle, path);
+  }
+
   /** Full decode + inflate. Prefer pulls for sparse reads. */
   async resolve(): Promise<HakoDocData | undefined> {
     const native = this.client.nativeBindings();
@@ -662,6 +683,16 @@ export class HakoClient {
     // Keep 'doc' handle for startAfter. Native memory management should be handled
     // by engineFree or manual free if the user keeps thousands of snapshots.
     return new DocumentSnapshot(docId, true, parseDocJson(json), doc);
+  }
+
+  /**
+   * P2 fast path (core 0.18+): JSON straight from the pinned bytes, no
+   * owned doc handle. Blob links are resolved, so the shape matches get().
+   */
+  async getJson(collection: string, docId: string): Promise<HakoDocData | null> {
+    this.assertOpen();
+    const json = this.native.engineGetJson(this.engine, collection, docId);
+    return json ? (parseDocJson(json) as HakoDocData) : null;
   }
 
   /**
@@ -1227,6 +1258,20 @@ return this;
     const handle = this.prepareNativeQuery();
     try {
       return parseQueryRows(native.queryExecute(this.client.engineHandle(), handle));
+    } finally {
+      native.queryFree(handle);
+    }
+  }
+
+  /**
+   * P2 fast path (core 0.18+): rows serialized from pinned bytes, same
+   * shape as get(). Projections keep the projected executor's shape.
+   */
+  async getJson(): Promise<HakoDocData[]> {
+    const native = this.client.nativeBindings();
+    const handle = this.prepareNativeQuery();
+    try {
+      return parseQueryRows(native.queryExecuteJson(this.client.engineHandle(), handle));
     } finally {
       native.queryFree(handle);
     }

@@ -20,6 +20,7 @@ FFI bindings over koffi/Bun (`native.ts`). Tauri lives in `@hakodb/tauri`
 | 0.5.20 | `hakodb v0.16.0` (`createCloudSyncServer` room params: `roomName`/`roomKey`) |
 | 0.5.21 | `hakodb v0.16.0` (Bun FFI arity fix) |
 | 0.5.22 | `hakodb v0.16.5` (schemas, versioned reads, quiescence, explain, elemMatch/allEq/near/traverse, raw C-ABI parity) |
+| 0.5.23 | `hakodb v0.18.0` (P2 JSON read paths: `getJson` point + query fast paths, view dotted-path pulls) |
 
 ## Setup — native library
 
@@ -28,8 +29,8 @@ FFI bindings over koffi/Bun (`native.ts`). Tauri lives in `@hakodb/tauri`
 `./native/<lib>`. Populate it with the sync script:
 
 ```powershell
-.\sync-native.ps1 -CoreDir C:\Dev\libs\firelite
-.\sync-native.ps1 -Tag v0.8.21
+.\sync-native.ps1 -CoreDir C:\Dev\libs\hakodb
+.\sync-native.ps1 -Tag v0.18.0
 ```
 
 Binaries under `native/` are git-ignored.
