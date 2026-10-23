@@ -278,6 +278,18 @@ export interface NativeBindings {
   viewGetStr(view: Handle, key: string): string | null;
   viewGetBytes(view: Handle, key: string): Uint8Array | null;
 
+  // P2 (core 0.18): JSON read paths + dotted-path view pulls. JSON strings
+  // are owned (free happens in the binding); view pulls copy before return.
+  engineGetJson(engine: Handle, collection: string, docId: string): string | null;
+  queryExecuteJson(engine: Handle, query: Handle): string | null;
+  viewToJson(view: Handle): string | null;
+  cursorWalkJson(engine: Handle, query: Handle, callback: (id: string, json: Uint8Array) => boolean): number;
+  viewGetPathInt(view: Handle, path: string): number | bigint | null;
+  viewGetPathFloat(view: Handle, path: string): number | null;
+  viewGetPathBool(view: Handle, path: string): boolean | null;
+  viewGetPathStr(view: Handle, path: string): string | null;
+  viewGetPathBytes(view: Handle, path: string): Uint8Array | null;
+
   lastError(): string;
 }
 
@@ -510,6 +522,15 @@ async function createBunBindings(libPath: string): Promise<NativeBindings> {
     hk_rawdoc_id: { args: [FFIType.ptr, FFIType.ptr], returns: FFIType.ptr },
     hk_view_get_str: { args: [FFIType.ptr, FFIType.cstring, FFIType.ptr], returns: FFIType.ptr },
     hk_view_get_bytes: { args: [FFIType.ptr, FFIType.cstring, FFIType.ptr], returns: FFIType.ptr },
+    hk_engine_get_json: { args: [FFIType.ptr, FFIType.cstring, FFIType.cstring], returns: FFIType.ptr },
+    hk_query_execute_json: { args: [FFIType.ptr, FFIType.ptr], returns: FFIType.ptr },
+    hk_cursor_walk_json: { args: [FFIType.ptr, FFIType.ptr, FFIType.function, FFIType.ptr], returns: FFIType.i64 },
+    hk_view_to_json: { args: [FFIType.ptr], returns: FFIType.ptr },
+    hk_view_get_path_int: { args: [FFIType.ptr, FFIType.cstring, FFIType.ptr], returns: FFIType.bool },
+    hk_view_get_path_float: { args: [FFIType.ptr, FFIType.cstring, FFIType.ptr], returns: FFIType.bool },
+    hk_view_get_path_bool: { args: [FFIType.ptr, FFIType.cstring], returns: FFIType.i32 },
+    hk_view_get_path_str: { args: [FFIType.ptr, FFIType.cstring, FFIType.ptr], returns: FFIType.ptr },
+    hk_view_get_path_bytes: { args: [FFIType.ptr, FFIType.cstring, FFIType.ptr], returns: FFIType.ptr },
 
     // ================= ERRORS =================
     hk_last_error: { args: [], returns: FFIType.ptr },
@@ -802,6 +823,41 @@ async function createBunBindings(libPath: string): Promise<NativeBindings> {
       return ptr ? new Uint8Array(toArrayBuffer(ptr, 0, Number(len[0]))).slice() : null;
     },
 
+    // P2 (core 0.18): JSON read paths + dotted-path pulls.
+    engineGetJson: (e, c, id) => ptrToStringAndFree(symbols.hk_engine_get_json(e, toC(c), toC(id))),
+    queryExecuteJson: (e, q) => ptrToStringAndFree(symbols.hk_query_execute_json(e, q)),
+    viewToJson: (view) => ptrToStringAndFree(symbols.hk_view_to_json(view)),
+    cursorWalkJson: (e, q, callback) => {
+      const cb = new JSCallback((idPtr: any, idLen: number, jsonPtr: any, jsonLen: number) => {
+        const id = new TextDecoder().decode(new Uint8Array(toArrayBuffer(idPtr, 0, Number(idLen))).slice());
+        const json = new Uint8Array(toArrayBuffer(jsonPtr, 0, Number(jsonLen))).slice();
+        return callback(id, json);
+      }, { args: [FFIType.ptr, FFIType.usize, FFIType.ptr, FFIType.usize, FFIType.ptr], returns: FFIType.bool });
+      return Number(symbols.hk_cursor_walk_json(e, q, cb, null));
+    },
+    viewGetPathInt: (view, path) => {
+      const out = new BigInt64Array(1);
+      return symbols.hk_view_get_path_int(view, toC(path), ptrOf(out)) ? out[0] : null;
+    },
+    viewGetPathFloat: (view, path) => {
+      const out = new Float64Array(1);
+      return symbols.hk_view_get_path_float(view, toC(path), ptrOf(out)) ? out[0] : null;
+    },
+    viewGetPathBool: (view, path) => {
+      const r = symbols.hk_view_get_path_bool(view, toC(path));
+      return r < 0 ? null : r !== 0;
+    },
+    viewGetPathStr: (view, path) => {
+      const len = new BigInt64Array(1);
+      const ptr = symbols.hk_view_get_path_str(view, toC(path), ptrOf(len));
+      return ptr ? new TextDecoder().decode(new Uint8Array(toArrayBuffer(ptr, 0, Number(len[0]))).slice()) : null;
+    },
+    viewGetPathBytes: (view, path) => {
+      const len = new BigInt64Array(1);
+      const ptr = symbols.hk_view_get_path_bytes(view, toC(path), ptrOf(len));
+      return ptr ? new Uint8Array(toArrayBuffer(ptr, 0, Number(len[0]))).slice() : null;
+    },
+
     lastError: () => {
       const ptr = symbols.hk_last_error();
       return ptr ? new CString(ptr).toString() : 'unknown ffi error';
@@ -1061,6 +1117,15 @@ async function createNodeBindings(libPath: string): Promise<NativeBindings> {
     hk_rawdoc_id: lib.func('const uint8_t* hk_rawdoc_id(const HK_RawDoc* doc, _Out_ uintptr_t *len_out)'),
     hk_view_get_str: lib.func('const uint8_t* hk_view_get_str(const HK_ViewDoc* view, const char* key, _Out_ uintptr_t *len_out)'),
     hk_view_get_bytes: lib.func('const uint8_t* hk_view_get_bytes(const HK_ViewDoc* view, const char* key, _Out_ uintptr_t *len_out)'),
+    hk_engine_get_json: lib.func('HeapStr hk_engine_get_json(HK_Engine* engine, const char* collection, const char* doc_id)'),
+    hk_query_execute_json: lib.func('HeapStr hk_query_execute_json(HK_Engine* engine, const HK_Query* query)'),
+    hk_cursor_walk_json: lib.func('int64_t hk_cursor_walk_json(HK_Engine* engine, const HK_Query* query, HkWalkCallback* callback, void* userdata)'),
+    hk_view_to_json: lib.func('HeapStr hk_view_to_json(const HK_ViewDoc* view)'),
+    hk_view_get_path_int: lib.func('bool hk_view_get_path_int(const HK_ViewDoc* view, const char* path, _Out_ int64_t *out)'),
+    hk_view_get_path_float: lib.func('bool hk_view_get_path_float(const HK_ViewDoc* view, const char* path, _Out_ double *out)'),
+    hk_view_get_path_bool: lib.func('int hk_view_get_path_bool(const HK_ViewDoc* view, const char* path)'),
+    hk_view_get_path_str: lib.func('const uint8_t* hk_view_get_path_str(const HK_ViewDoc* view, const char* path, _Out_ uintptr_t *len_out)'),
+    hk_view_get_path_bytes: lib.func('const uint8_t* hk_view_get_path_bytes(const HK_ViewDoc* view, const char* path, _Out_ uintptr_t *len_out)'),
 
     hk_last_error: lib.func('const char* hk_last_error()'),
     hk_string_free: lib.func('void hk_string_free(void* value)')
@@ -1340,6 +1405,41 @@ async function createNodeBindings(libPath: string): Promise<NativeBindings> {
     viewGetBytes: (view, key) => {
       const len: number[] = [0];
       const ptr = fn.hk_view_get_bytes(view, key, len);
+      return ptr ? Uint8Array.from(koffi.decode(ptr, 'uint8_t', Number(len[0]))) : null;
+    },
+
+    // P2 (core 0.18): JSON read paths + dotted-path pulls.
+    engineGetJson: (e, c, id) => ptrToStringAndFree(fn.hk_engine_get_json(e, c, id)),
+    queryExecuteJson: (e, q) => ptrToStringAndFree(fn.hk_query_execute_json(e, q)),
+    viewToJson: (view) => ptrToStringAndFree(fn.hk_view_to_json(view)),
+    cursorWalkJson: (e, q, callback) => {
+      const wrapper = (id: any, idLen: number, json: any, jsonLen: number) => {
+        const rowId = new TextDecoder().decode(Uint8Array.from(koffi.decode(id, 'uint8_t', Number(idLen))));
+        const rowJson = Uint8Array.from(koffi.decode(json, 'uint8_t', Number(jsonLen)));
+        return callback(rowId, rowJson);
+      };
+      return Number(fn.hk_cursor_walk_json(e, q, koffi.register(wrapper, 'HkWalkCallback *'), null));
+    },
+    viewGetPathInt: (view, path) => {
+      const out: bigint[] = [0n];
+      return fn.hk_view_get_path_int(view, path, out) ? out[0] : null;
+    },
+    viewGetPathFloat: (view, path) => {
+      const out: number[] = [0];
+      return fn.hk_view_get_path_float(view, path, out) ? out[0] : null;
+    },
+    viewGetPathBool: (view, path) => {
+      const r: number = fn.hk_view_get_path_bool(view, path);
+      return r < 0 ? null : r !== 0;
+    },
+    viewGetPathStr: (view, path) => {
+      const len: number[] = [0];
+      const ptr = fn.hk_view_get_path_str(view, path, len);
+      return ptr ? new TextDecoder().decode(Uint8Array.from(koffi.decode(ptr, 'uint8_t', Number(len[0])))) : null;
+    },
+    viewGetPathBytes: (view, path) => {
+      const len: number[] = [0];
+      const ptr = fn.hk_view_get_path_bytes(view, path, len);
       return ptr ? Uint8Array.from(koffi.decode(ptr, 'uint8_t', Number(len[0]))) : null;
     },
 
