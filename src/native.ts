@@ -155,6 +155,8 @@ export interface NativeBindings {
   queryAggregateCount(query: Handle): number;
   queryAggregateSum(query: Handle, field: string): number;
   queryAggregateAvg(query: Handle, field: string): number;
+  queryAggregateMin(query: Handle, field: string): number;
+  queryAggregateMax(query: Handle, field: string): number;
   queryExecuteAggregation(engine: Handle, query: Handle): string | null;
 
   engineListCollections(engine: Handle): string | null;
@@ -439,6 +441,8 @@ async function createBunBindings(libPath: string): Promise<NativeBindings> {
     hk_query_aggregate_count: { args: [FFIType.ptr], returns: FFIType.i32 },
     hk_query_aggregate_sum: { args: [FFIType.ptr, FFIType.cstring], returns: FFIType.i32 },
     hk_query_aggregate_avg: { args: [FFIType.ptr, FFIType.cstring], returns: FFIType.i32 },
+    hk_query_aggregate_min: { args: [FFIType.ptr, FFIType.cstring], returns: FFIType.i32 },
+    hk_query_aggregate_max: { args: [FFIType.ptr, FFIType.cstring], returns: FFIType.i32 },
     hk_query_execute_aggregation: { args: [FFIType.ptr, FFIType.ptr], returns: FFIType.ptr },
     hk_query_where_or_str: { args: [FFIType.ptr, FFIType.cstring, FFIType.cstring], returns: FFIType.i32 },
     hk_query_where_or_int: { args: [FFIType.ptr, FFIType.cstring, FFIType.i64], returns: FFIType.i32 },
@@ -694,6 +698,8 @@ async function createBunBindings(libPath: string): Promise<NativeBindings> {
     queryAggregateCount: (q) => symbols.hk_query_aggregate_count(q),
     queryAggregateSum: (q, f) => symbols.hk_query_aggregate_sum(q, toC(f)),
     queryAggregateAvg: (q, f) => symbols.hk_query_aggregate_avg(q, toC(f)),
+    queryAggregateMin: (q, f) => symbols.hk_query_aggregate_min(q, toC(f)),
+    queryAggregateMax: (q, f) => symbols.hk_query_aggregate_max(q, toC(f)),
     queryExecuteAggregation: (e, q) => ptrToStringAndFree(symbols.hk_query_execute_aggregation(e, q)),
     engineListCollections: (engine) => ptrToStringAndFree(symbols.hk_engine_list_collections(engine)),
     netSyncerNew: (engine, name, roomKey) => symbols.hk_net_syncer_new(engine, toC(name), toC(roomKey)),
@@ -1025,6 +1031,8 @@ async function createNodeBindings(libPath: string): Promise<NativeBindings> {
     hk_query_aggregate_count: lib.func('int hk_query_aggregate_count(HK_Query* query)'),
     hk_query_aggregate_sum: lib.func('int hk_query_aggregate_sum(HK_Query* query, const char* field)'),
     hk_query_aggregate_avg: lib.func('int hk_query_aggregate_avg(HK_Query* query, const char* field)'),
+    hk_query_aggregate_min: lib.func('int hk_query_aggregate_min(HK_Query* query, const char* field)'),
+    hk_query_aggregate_max: lib.func('int hk_query_aggregate_max(HK_Query* query, const char* field)'),
     hk_query_execute_aggregation: lib.func('HeapStr hk_query_execute_aggregation(HK_Engine* engine, const HK_Query* query)'),
     hk_query_where_or_str: lib.func('int hk_query_where_or_str(HK_Query* query, const char* field, const char* value)'),
     hk_query_where_or_int: lib.func('int hk_query_where_or_int(HK_Query* query, const char* field, int64_t value)'),
@@ -1279,6 +1287,8 @@ async function createNodeBindings(libPath: string): Promise<NativeBindings> {
     queryAggregateCount: (q) => fn.hk_query_aggregate_count(q),
     queryAggregateSum: (q, f) => fn.hk_query_aggregate_sum(q, f),
     queryAggregateAvg: (q, f) => fn.hk_query_aggregate_avg(q, f),
+    queryAggregateMin: (q, f) => fn.hk_query_aggregate_min(q, f),
+    queryAggregateMax: (q, f) => fn.hk_query_aggregate_max(q, f),
     queryExecuteAggregation: (e, q) => ptrToStringAndFree(fn.hk_query_execute_aggregation(e, q)),
     engineListCollections: (engine) => ptrToStringAndFree(fn.hk_engine_list_collections(engine)),
     netSyncerNew: (engine, name, roomKey) => fn.hk_net_syncer_new(engine, name, roomKey),

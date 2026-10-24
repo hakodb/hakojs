@@ -1381,6 +1381,32 @@ return this;
     }
   }
 
+  /** `null` when no matching document has a numeric `field`. */
+  async min(field: string): Promise<number | null> {
+    const native = this.client.nativeBindings();
+    const handle = this.prepareNativeQuery();
+    try {
+      ensureOk(native.queryAggregateMin(handle, field), native, 'queryAggregateMin');
+      const json = native.queryExecuteAggregation(this.client.engineHandle(), handle);
+      return json ? (JSON.parse(json)[`min_${field}`] ?? null) : null;
+    } finally {
+      native.queryFree(handle);
+    }
+  }
+
+  /** `null` when no matching document has a numeric `field`. */
+  async max(field: string): Promise<number | null> {
+    const native = this.client.nativeBindings();
+    const handle = this.prepareNativeQuery();
+    try {
+      ensureOk(native.queryAggregateMax(handle, field), native, 'queryAggregateMax');
+      const json = native.queryExecuteAggregation(this.client.engineHandle(), handle);
+      return json ? (JSON.parse(json)[`max_${field}`] ?? null) : null;
+    } finally {
+      native.queryFree(handle);
+    }
+  }
+
   onSnapshot(callback: (snapshot: HakoDocData[]) => void): Unsubscribe {
     const native = this.client.nativeBindings();
     const internalWatcher: WatchCallback = async () => {
