@@ -61,6 +61,11 @@ export interface NativeBindings {
   engineGet(engine: Handle, collection: string, docId: string): Handle;
   engineDelete(engine: Handle, collection: string, docId: string): number;
   engineDeleteLocal(engine: Handle, collection: string, docId: string): number;
+  engineDeleteEx(engine: Handle, collection: string, docId: string, force: boolean): number;
+  engineRestore(engine: Handle, collection: string, docId: string): number;
+  engineRestoreAvailable(engine: Handle, collection: string | null): string | null;
+  engineDeleteQueue(engine: Handle, collection: string | null): string | null;
+  engineSweepNow(engine: Handle): number;
   engineSetCollectionLocal(engine: Handle, collection: string, local: number): number;
   engineReplicateKey(engine: Handle, collection: string, docId: string): number;
   engineReplicateCollection(engine: Handle, collection: string): number;
@@ -79,6 +84,7 @@ export interface NativeBindings {
   batchFree(batch: Handle): void;
   batchSet(batch: Handle, collection: string, docId: string, doc: Handle): number;
   batchDelete(batch: Handle, collection: string, docId: string): number;
+  batchDeleteEx(batch: Handle, collection: string, docId: string, force: boolean): number;
   batchCommit(engine: Handle, batch: Handle): number;
 
   // Serializable Transactions
@@ -377,6 +383,11 @@ async function createBunBindings(libPath: string): Promise<NativeBindings> {
     hk_engine_get: { args: [FFIType.ptr, FFIType.cstring, FFIType.cstring], returns: FFIType.ptr },
     hk_engine_delete: { args: [FFIType.ptr, FFIType.cstring, FFIType.cstring], returns: FFIType.i32 },
     hk_engine_delete_local: { args: [FFIType.ptr, FFIType.cstring, FFIType.cstring], returns: FFIType.i32 },
+    hk_engine_delete_ext: { args: [FFIType.ptr, FFIType.cstring, FFIType.cstring, FFIType.i32], returns: FFIType.i32 },
+    hk_engine_restore: { args: [FFIType.ptr, FFIType.cstring, FFIType.cstring], returns: FFIType.i32 },
+    hk_engine_restore_available: { args: [FFIType.ptr, FFIType.cstring], returns: FFIType.ptr },
+    hk_engine_delete_queue: { args: [FFIType.ptr, FFIType.cstring], returns: FFIType.ptr },
+    hk_engine_sweep_now: { args: [FFIType.ptr], returns: FFIType.i32 },
     hk_engine_set_collection_local: { args: [FFIType.ptr, FFIType.cstring, FFIType.i32], returns: FFIType.i32 },
     hk_engine_replicate_key: { args: [FFIType.ptr, FFIType.cstring, FFIType.cstring], returns: FFIType.i32 },
     hk_engine_replicate_collection: { args: [FFIType.ptr, FFIType.cstring], returns: FFIType.i32 },
@@ -415,6 +426,7 @@ async function createBunBindings(libPath: string): Promise<NativeBindings> {
     hk_batch_free: { args: [FFIType.ptr], returns: FFIType.void },
     hk_batch_set: { args: [FFIType.ptr, FFIType.cstring, FFIType.cstring, FFIType.ptr], returns: FFIType.i32 },
     hk_batch_delete: { args: [FFIType.ptr, FFIType.cstring, FFIType.cstring], returns: FFIType.i32 },
+    hk_batch_delete_ext: { args: [FFIType.ptr, FFIType.cstring, FFIType.cstring, FFIType.i32], returns: FFIType.i32 },
     hk_batch_commit: { args: [FFIType.ptr, FFIType.ptr], returns: FFIType.i32 },
 
     hk_transaction_begin: { args: [FFIType.ptr], returns: FFIType.ptr },
@@ -638,6 +650,11 @@ async function createBunBindings(libPath: string): Promise<NativeBindings> {
     engineGet: (engine, collection, docId) => symbols.hk_engine_get(engine, toC(collection), toC(docId)),
     engineDelete: (engine, collection, docId) => symbols.hk_engine_delete(engine, toC(collection), toC(docId)),
     engineDeleteLocal: (engine, collection, docId) => symbols.hk_engine_delete_local(engine, toC(collection), toC(docId)),
+    engineDeleteEx: (engine, collection, docId, force) => symbols.hk_engine_delete_ext(engine, toC(collection), toC(docId), force ? 1 : 0),
+    engineRestore: (engine, collection, docId) => symbols.hk_engine_restore(engine, toC(collection), toC(docId)),
+    engineRestoreAvailable: (engine, collection) => ptrToStringAndFree(symbols.hk_engine_restore_available(engine, (collection ? toC(collection) : null) as unknown as string)),
+    engineDeleteQueue: (engine, collection) => ptrToStringAndFree(symbols.hk_engine_delete_queue(engine, (collection ? toC(collection) : null) as unknown as string)),
+    engineSweepNow: (engine) => symbols.hk_engine_sweep_now(engine),
     engineSetCollectionLocal: (engine, collection, local) => symbols.hk_engine_set_collection_local(engine, toC(collection), local),
     engineReplicateKey: (engine, collection, docId) => symbols.hk_engine_replicate_key(engine, toC(collection), toC(docId)),
     engineReplicateCollection: (engine, collection) => symbols.hk_engine_replicate_collection(engine, toC(collection)),
@@ -655,6 +672,7 @@ async function createBunBindings(libPath: string): Promise<NativeBindings> {
     batchFree: (batch) => symbols.hk_batch_free(batch),
     batchSet: (batch, collection, docId, doc) => symbols.hk_batch_set(batch, toC(collection), toC(docId), doc),
     batchDelete: (batch, collection, docId) => symbols.hk_batch_delete(batch, toC(collection), toC(docId)),
+    batchDeleteEx: (batch, collection, docId, force) => symbols.hk_batch_delete_ext(batch, toC(collection), toC(docId), force ? 1 : 0),
     batchCommit: (engine, batch) => symbols.hk_batch_commit(engine, batch),
 
     transactionBegin: (engine) => symbols.hk_transaction_begin(engine),
@@ -991,6 +1009,11 @@ async function createNodeBindings(libPath: string): Promise<NativeBindings> {
     hk_engine_get: lib.func('HK_Doc* hk_engine_get(HK_Engine* engine, const char* collection, const char* doc_id)'),
     hk_engine_delete: lib.func('int hk_engine_delete(HK_Engine* engine, const char* collection, const char* doc_id)'),
     hk_engine_delete_local: lib.func('int hk_engine_delete_local(HK_Engine* engine, const char* collection, const char* doc_id)'),
+    hk_engine_delete_ext: lib.func('int hk_engine_delete_ext(HK_Engine* engine, const char* collection, const char* doc_id, int32_t mode)'),
+    hk_engine_restore: lib.func('int hk_engine_restore(HK_Engine* engine, const char* collection, const char* doc_id)'),
+    hk_engine_restore_available: lib.func('HeapStr hk_engine_restore_available(HK_Engine* engine, const char* collection)'),
+    hk_engine_delete_queue: lib.func('HeapStr hk_engine_delete_queue(HK_Engine* engine, const char* collection)'),
+    hk_engine_sweep_now: lib.func('int hk_engine_sweep_now(HK_Engine* engine)'),
     hk_engine_set_collection_local: lib.func('int hk_engine_set_collection_local(HK_Engine* engine, const char* collection, int local)'),
     hk_engine_replicate_key: lib.func('int hk_engine_replicate_key(HK_Engine* engine, const char* collection, const char* doc_id)'),
     hk_engine_replicate_collection: lib.func('int hk_engine_replicate_collection(HK_Engine* engine, const char* collection)'),
@@ -1029,6 +1052,7 @@ async function createNodeBindings(libPath: string): Promise<NativeBindings> {
     hk_batch_free: lib.func('void hk_batch_free(HK_Batch* batch)'),
     hk_batch_set: lib.func('int hk_batch_set(HK_Batch* batch, const char* collection, const char* doc_id, const HK_Doc* doc)'),
     hk_batch_delete: lib.func('int hk_batch_delete(HK_Batch* batch, const char* collection, const char* doc_id)'),
+    hk_batch_delete_ext: lib.func('int hk_batch_delete_ext(HK_Batch* batch, const char* collection, const char* doc_id, int32_t mode)'),
     hk_batch_commit: lib.func('int hk_batch_commit(HK_Engine* engine, HK_Batch* batch)'),
 
     hk_transaction_begin: lib.func('HK_Transaction* hk_transaction_begin(HK_Engine* engine)'),
@@ -1257,6 +1281,11 @@ async function createNodeBindings(libPath: string): Promise<NativeBindings> {
     engineGet: (engine, collection, docId) => fn.hk_engine_get(engine, collection, docId),
     engineDelete: (engine, collection, docId) => fn.hk_engine_delete(engine, collection, docId),
     engineDeleteLocal: (engine, collection, docId) => fn.hk_engine_delete_local(engine, collection, docId),
+    engineDeleteEx: (engine, collection, docId, force) => fn.hk_engine_delete_ext(engine, collection, docId, force ? 1 : 0),
+    engineRestore: (engine, collection, docId) => fn.hk_engine_restore(engine, collection, docId),
+    engineRestoreAvailable: (engine, collection) => ptrToStringAndFree(fn.hk_engine_restore_available(engine, collection as unknown as string)),
+    engineDeleteQueue: (engine, collection) => ptrToStringAndFree(fn.hk_engine_delete_queue(engine, collection as unknown as string)),
+    engineSweepNow: (engine) => fn.hk_engine_sweep_now(engine),
     engineSetCollectionLocal: (engine, collection, local) => fn.hk_engine_set_collection_local(engine, collection, local),
     engineReplicateKey: (engine, collection, docId) => fn.hk_engine_replicate_key(engine, collection, docId),
     engineReplicateCollection: (engine, collection) => fn.hk_engine_replicate_collection(engine, collection),
@@ -1274,6 +1303,7 @@ async function createNodeBindings(libPath: string): Promise<NativeBindings> {
     batchFree: (batch) => fn.hk_batch_free(batch),
     batchSet: (batch, collection, docId, doc) => fn.hk_batch_set(batch, collection, docId, doc),
     batchDelete: (batch, collection, docId) => fn.hk_batch_delete(batch, collection, docId),
+    batchDeleteEx: (batch, collection, docId, force) => fn.hk_batch_delete_ext(batch, collection, docId, force ? 1 : 0),
     batchCommit: (engine, batch) => fn.hk_batch_commit(engine, batch),
 
     transactionBegin: (engine) => fn.hk_transaction_begin(engine),

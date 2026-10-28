@@ -766,6 +766,44 @@ export class HakoClient {
     ensureOk(this.native.engineDeleteLocal(this.engine, collection, docId), this.native, 'engineDeleteLocal');
   }
 
+  /** Delete with an explicit mode: force=true reproduces the legacy
+   * tombstone-only shape. Default `delete` is soft since core 0.20.0
+   * (restoreable via restore() until the sweeper purges the record). */
+  async deleteEx(collection: string, docId: string, force: boolean): Promise<void> {
+    this.assertOpen();
+    ensureOk(this.native.engineDeleteEx(this.engine, collection, docId, force), this.native, 'engineDeleteEx');
+  }
+
+  /** Restore a soft-deleted doc from its retention record (fresh version;
+   * consumes the record). Refuses when the id was re-put (cancel rule) or
+   * no record exists. */
+  async restore(collection: string, docId: string): Promise<void> {
+    this.assertOpen();
+    ensureOk(this.native.engineRestore(this.engine, collection, docId), this.native, 'engineRestore');
+  }
+
+  /** Restoreable records, all collections or one (soft-delete retention queue). */
+  async restoreAvailable(collection?: string): Promise<Array<{ col: string; id: string; deleted_at: number; scheduled_at: number; bytes: number }>> {
+    this.assertOpen();
+    return JSON.parse(this.native.engineRestoreAvailable(this.engine, collection ?? null) ?? '[]');
+  }
+
+  /** Due-for-sweep subset of the retention queue (same shape as restoreAvailable). */
+  async deleteQueue(collection?: string): Promise<Array<{ col: string; id: string; deleted_at: number; scheduled_at: number; bytes: number }>> {
+    this.assertOpen();
+    return JSON.parse(this.native.engineDeleteQueue(this.engine, collection ?? null) ?? '[]');
+  }
+
+  /** Run one retention sweep pass now; returns the purged record count. */
+  async sweepNow(): Promise<number> {
+    this.assertOpen();
+    const n = this.native.engineSweepNow(this.engine);
+    if (n < 0) {
+      throw new Error(`engineSweepNow: ${this.native.lastError()}`);
+    }
+    return n;
+  }
+
   /** Mark a collection local-only (never syncs) or rejoin it with `local=false`. */
   async setCollectionLocal(collection: string, local: boolean): Promise<void> {
     this.assertOpen();
@@ -1559,6 +1597,14 @@ export class WriteBatch {
   delete(docRef: DocumentReference): WriteBatch {
     this.ensureActive();
     ensureOk(this.native.batchDelete(this.handle, docRef._collection, docRef._id), this.native, 'batchDelete');
+    return this;
+  }
+
+  /** Batch delete with an explicit mode: 0/soft = restoreable, force = legacy
+   * tombstone-only. batchDelete() keeps legacy/force for frozen contracts. */
+  deleteEx(docRef: DocumentReference, force: boolean): WriteBatch {
+    this.ensureActive();
+    ensureOk(this.native.batchDeleteEx(this.handle, docRef._collection, docRef._id, force), this.native, 'batchDeleteEx');
     return this;
   }
 
