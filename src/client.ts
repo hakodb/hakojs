@@ -36,6 +36,55 @@ export interface PathHit {
   depth: number;
   cost?: number;
   doc: HakoDocData;
+  /** Route projections, only present when opted in via PathOptions. */
+  path?: string[];
+  /** Edge docs as JSON strings; null for anonymous edges. */
+  via?: (string | null)[];
+}
+
+/** A predicate: docs whose `field` equals `equals` travel (or stop). */
+export interface PathFilter {
+  field: string;
+  equals: unknown;
+}
+
+/** v0.19 traverse extensions shared by findPathsFull/shortestPathsFull/exportGraph/graphAnalysis. */
+export interface PathOptions {
+  direction?: TraverseDirection;
+  edge?: string | null;
+  via?: string | null;
+  maxDepth?: number;
+  k?: number;
+  includePath?: boolean;
+  includeVia?: boolean;
+  nodeFilter?: PathFilter;
+  edgeType?: PathFilter;
+  edgeMatch?: PathFilter;
+  /** Shortest paths only: numeric prop name on edge docs (null = uniform 1.0). */
+  weight?: string | null;
+}
+
+function resolvePathOptions(opts: PathOptions) {
+  const f = (p?: PathFilter) => (p ? { field: p.field, json: JSON.stringify(p.equals ?? null) } : { field: null, json: null });
+  const node = f(opts.nodeFilter);
+  const type = f(opts.edgeType);
+  const match = f(opts.edgeMatch);
+  return {
+    direction: opts.direction === 'incoming' ? 1 : opts.direction === 'both' ? 2 : 0,
+    edge: opts.edge ?? null,
+    via: opts.via ?? null,
+    maxDepth: opts.maxDepth ?? 10,
+    k: opts.k ?? 100,
+    includePath: opts.includePath ?? false,
+    includeVia: opts.includeVia ?? false,
+    nodeField: node.field,
+    nodeJSON: node.json,
+    typeField: type.field,
+    typeJSON: type.json,
+    matchField: match.field,
+    matchJSON: match.json,
+    weight: opts.weight ?? null,
+  };
 }
 
 const SERVER_TIMESTAMP_SENTINEL = "__FL_SERVER_TIMESTAMP__";
@@ -998,6 +1047,72 @@ export class CollectionReference {
 
   async createCompositeIndex(fields: { field: string; desc?: boolean }[]): Promise<number> {
     return this.client.createCompositeIndex(this.name, fields);
+  }
+
+  /** Drop indexes (v0.19.6 parity). Composite drops by the id createCompositeIndex returned. */
+  async dropIndex(field: string): Promise<void> {
+    ensureOk(this.client.nativeBindings().dropSimpleIndex(this.client.engineHandle(), this.name, field), this.client.nativeBindings(), 'dropIndex');
+  }
+
+  async dropVectorIndex(field: string): Promise<void> {
+    ensureOk(this.client.nativeBindings().dropVectorIndex(this.client.engineHandle(), this.name, field), this.client.nativeBindings(), 'dropVectorIndex');
+  }
+
+  async dropCompositeIndex(id: number): Promise<void> {
+    ensureOk(this.client.nativeBindings().dropCompositeIndex(this.client.engineHandle(), this.name, id), this.client.nativeBindings(), 'dropCompositeIndex');
+  }
+
+  async dropEdgeIndex(): Promise<void> {
+    ensureOk(this.client.nativeBindings().dropEdgeIndex(this.client.engineHandle(), this.name), this.client.nativeBindings(), 'dropEdgeIndex');
+  }
+
+  async dropFtsIndex(field: string): Promise<void> {
+    ensureOk(this.client.nativeBindings().dropFtsIndex(this.client.engineHandle(), this.name, field), this.client.nativeBindings(), 'dropFtsIndex');
+  }
+
+  async dropTraverseIndex(): Promise<void> {
+    ensureOk(this.client.nativeBindings().dropTraverseIndex(this.client.engineHandle(), this.name), this.client.nativeBindings(), 'dropTraverseIndex');
+  }
+
+  /** HNSW-tuned vector index (m = edges per node, efConstruction = build beam, efSearch = query beam; 0 = engine default). */
+  async createVectorIndexV2(field: string, dim: number, metric: VectorMetric = 'cosine', m = 0, efConstruction = 0, efSearch = 0): Promise<void> {
+    ensureOk(this.client.nativeBindings().createVectorIndexV2(this.client.engineHandle(), this.name, field, dim, metric === 'l2' ? 1 : 0, m, efConstruction, efSearch), this.client.nativeBindings(), 'createVectorIndexV2');
+  }
+
+  /** Graph BFS with the v0.19 extensions: via-edge hops, node/edge predicates, opt-in path/via projections. */
+  async findPathsFull(id: string, opts: PathOptions = {}): Promise<PathHit[]> {
+    const native = this.client.nativeBindings();
+    const o = resolvePathOptions(opts);
+    const json = native.findPathsFull(this.client.engineHandle(), this.name, id, o.direction, o.edge, o.via, o.maxDepth, o.k, o.includePath, o.includeVia, o.nodeField, o.nodeJSON, o.typeField, o.typeJSON, o.matchField, o.matchJSON);
+    if (json === null) throw new Error(`findPathsFull failed: ${native.lastError()}`);
+    return JSON.parse(json) as PathHit[];
+  }
+
+  /** Weighted shortest paths with the same extensions as findPathsFull. */
+  async shortestPathsFull(id: string, via: string | null, opts: PathOptions = {}): Promise<PathHit[]> {
+    const native = this.client.nativeBindings();
+    const o = resolvePathOptions(opts);
+    const json = native.simplePathsFull(this.client.engineHandle(), this.name, id, o.direction, o.edge, via, o.weight ?? null, o.maxDepth, o.k, o.includePath, o.includeVia, o.nodeField, o.nodeJSON, o.typeField, o.typeJSON, o.matchField, o.matchJSON);
+    if (json === null) throw new Error(`shortestPathsFull failed: ${native.lastError()}`);
+    return JSON.parse(json) as PathHit[];
+  }
+
+  /** Serialize the collection's ref graph (nodes + edges) as JSON. */
+  async exportGraph(opts: PathOptions = {}): Promise<unknown> {
+    const native = this.client.nativeBindings();
+    const o = resolvePathOptions(opts);
+    const json = native.exportGraph(this.client.engineHandle(), this.name, o.direction, o.edge, o.via, o.nodeField, o.nodeJSON);
+    if (json === null) throw new Error(`exportGraph failed: ${native.lastError()}`);
+    return JSON.parse(json);
+  }
+
+  /** Whole-graph analysis: "components" | "cycle" | "topo". */
+  async graphAnalysis(op: 'components' | 'cycle' | 'topo', opts: PathOptions = {}): Promise<unknown> {
+    const native = this.client.nativeBindings();
+    const o = resolvePathOptions(opts);
+    const json = native.graphAnalysis(this.client.engineHandle(), this.name, op, o.direction, o.edge, o.via, o.nodeField, o.nodeJSON);
+    if (json === null) throw new Error(`graphAnalysis failed: ${native.lastError()}`);
+    return JSON.parse(json);
   }
 }
 
