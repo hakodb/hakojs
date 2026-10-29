@@ -339,6 +339,12 @@ async function createBunBindings(libPath: string): Promise<NativeBindings> {
   const ffi = await import('bun:ffi');
   const { dlopen, FFIType, CString, JSCallback, toArrayBuffer } = ffi as any;
 
+  // Watch trampolines must outlive their native watch: the engine invokes
+  // them from its watch thread, and a GC'd JSCallback would leave that
+  // thread calling freed memory (issue #21). Closed in watchFree after
+  // the native join.
+  const watchTrampolines = new Map<unknown, { close(): void }>();
+
   const symbols = dlopen(libPath, {
     hk_engine_open: { args: [FFIType.cstring], returns: FFIType.ptr },
     hk_engine_is_indexes_ready: { args: [FFIType.ptr], returns: FFIType.bool },
@@ -388,6 +394,11 @@ async function createBunBindings(libPath: string): Promise<NativeBindings> {
     hk_engine_restore_available: { args: [FFIType.ptr, FFIType.cstring], returns: FFIType.ptr },
     hk_engine_delete_queue: { args: [FFIType.ptr, FFIType.cstring], returns: FFIType.ptr },
     hk_engine_sweep_now: { args: [FFIType.ptr], returns: FFIType.i32 },
+    hk_net_syncer_new: { args: [FFIType.ptr, FFIType.cstring, FFIType.cstring], returns: FFIType.ptr },
+    hk_net_syncer_start: { args: [FFIType.ptr, FFIType.u16], returns: FFIType.i32 },
+    hk_net_syncer_set_discovery: { args: [FFIType.ptr, FFIType.i32], returns: FFIType.i32 },
+    hk_net_syncer_status: { args: [FFIType.ptr], returns: FFIType.ptr },
+    hk_net_syncer_free: { args: [FFIType.ptr], returns: FFIType.void },
     hk_engine_set_collection_local: { args: [FFIType.ptr, FFIType.cstring, FFIType.i32], returns: FFIType.i32 },
     hk_engine_replicate_key: { args: [FFIType.ptr, FFIType.cstring, FFIType.cstring], returns: FFIType.i32 },
     hk_engine_replicate_collection: { args: [FFIType.ptr, FFIType.cstring], returns: FFIType.i32 },
@@ -626,12 +637,26 @@ async function createBunBindings(libPath: string): Promise<NativeBindings> {
     configSetBackgroundMaintenance: (c, e) => symbols.hk_config_set_background_maintenance(c, e),
 
     engineWatch: (engine, collection, callback) => {
+      // The engine calls the snapshot callback from its native watch
+      // thread — bun requires a threadsafe trampoline for that (marshaled
+      // onto the JS thread; issue #21).
       const cb = new JSCallback((c: any, p: any, kind: number) => {
         callback(new CString(c).toString(), new CString(p).toString(), kind);
-      }, { args: [FFIType.ptr, FFIType.ptr, FFIType.i32], returns: FFIType.void });
-      return symbols.hk_engine_watch(engine, toC(collection), cb, null);
+      }, { args: [FFIType.ptr, FFIType.ptr, FFIType.i32], returns: FFIType.void, threadsafe: true });
+      const watch = symbols.hk_engine_watch(engine, toC(collection), cb, null);
+      watchTrampolines.set(watch, cb);
+      return watch;
     },
-    watchFree: (watch) => symbols.hk_watch_free(watch),
+    watchFree: (watch) => {
+      // hk_watch_free joins the watch thread — no invocation can follow,
+      // so the trampoline is dead and can be closed + dropped.
+      symbols.hk_watch_free(watch);
+      const cb = watchTrampolines.get(watch);
+      if (cb) {
+        cb.close();
+        watchTrampolines.delete(watch);
+      }
+    },
 
     docNew: () => symbols.hk_doc_new(),
     docFree: (doc) => symbols.hk_doc_free(doc),
