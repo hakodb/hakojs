@@ -1,7 +1,11 @@
 {
   "name": "@hakodb/client",
-  "version": "0.6.2",
+  "version": "0.6.3",
   "description": "High-level HakoDB JavaScript/TypeScript client for Node.js and Bun",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/hakodb/hakojs.git"
+  },
   "license": "MIT",
   "type": "module",
   "main": "src/index.ts",
