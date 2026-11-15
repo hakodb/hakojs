@@ -1112,9 +1112,9 @@ export class CollectionReference {
     ensureOk(this.client.nativeBindings().dropTraverseIndex(this.client.engineHandle(), this.name), this.client.nativeBindings(), 'dropTraverseIndex');
   }
 
-  /** HNSW-tuned vector index (m = edges per node, efConstruction = build beam, efSearch = query beam; 0 = engine default). */
-  async createVectorIndexV2(field: string, dim: number, metric: VectorMetric = 'cosine', m = 0, efConstruction = 0, efSearch = 0): Promise<void> {
-    ensureOk(this.client.nativeBindings().createVectorIndexV2(this.client.engineHandle(), this.name, field, dim, metric === 'l2' ? 1 : 0, m, efConstruction, efSearch), this.client.nativeBindings(), 'createVectorIndexV2');
+  /** HNSW-tuned vector index (m = edges per node, efConstruction = build beam, efSearch = query beam; 0 = engine default). binaryStage1 enables the popcount stage-1 filter (0 = int8 default). */
+  async createVectorIndexV2(field: string, dim: number, metric: VectorMetric = 'cosine', m = 0, efConstruction = 0, efSearch = 0, binaryStage1 = 0): Promise<void> {
+    ensureOk(this.client.nativeBindings().createVectorIndexV2(this.client.engineHandle(), this.name, field, dim, metric === 'l2' ? 1 : 0, m, efConstruction, efSearch, binaryStage1), this.client.nativeBindings(), 'createVectorIndexV2');
   }
 
   /** Graph BFS with the v0.19 extensions: via-edge hops, node/edge predicates, opt-in path/via projections. */
@@ -1144,12 +1144,38 @@ export class CollectionReference {
     return JSON.parse(json);
   }
 
-  /** Whole-graph analysis: "components" | "cycle" | "topo". */
-  async graphAnalysis(op: 'components' | 'cycle' | 'topo', opts: PathOptions = {}): Promise<unknown> {
+  /** Whole-graph analysis: "components" | "cycle" | "topo" | "degrees". */
+  async graphAnalysis(op: 'components' | 'cycle' | 'topo' | 'degrees', opts: PathOptions = {}): Promise<unknown> {
     const native = this.client.nativeBindings();
     const o = resolvePathOptions(opts);
     const json = native.graphAnalysis(this.client.engineHandle(), this.name, op, o.direction, o.edge, o.via, o.nodeField, o.nodeJSON);
     if (json === null) throw new Error(`graphAnalysis failed: ${native.lastError()}`);
+    return JSON.parse(json);
+  }
+
+  /** Personalized PageRank: seeds = ["col/id"] or null for classic; damping 0 = 0.85; top 0 = all nodes. */
+  async graphPagerank(seeds: string[] | null, opts: PathOptions & { damping?: number; top?: number } = {}): Promise<unknown> {
+    const native = this.client.nativeBindings();
+    const o = resolvePathOptions(opts);
+    const json = native.graphPagerank(this.client.engineHandle(), this.name, seeds === null ? null : JSON.stringify(seeds), o.direction, o.edge, o.via, o.nodeField, o.nodeJSON, opts.damping ?? 0, opts.top ?? 0);
+    if (json === null) throw new Error(`graphPagerank failed: ${native.lastError()}`);
+    return JSON.parse(json);
+  }
+
+  /** Seed-scoped N-hop subgraph: same node/edge shape as exportGraph, scoped to one seed. nodeCap 0 = unlimited. */
+  async subgraph(seedId: string, opts: PathOptions & { nodeCap?: number } = {}): Promise<unknown> {
+    const native = this.client.nativeBindings();
+    const o = resolvePathOptions(opts);
+    const json = native.subgraph(this.client.engineHandle(), this.name, seedId, o.maxDepth, o.direction, o.edge, o.via, o.nodeField, o.nodeJSON, opts.nodeCap ?? 0);
+    if (json === null) throw new Error(`subgraph failed: ${native.lastError()}`);
+    return JSON.parse(json);
+  }
+
+  /** Hybrid retrieval: FTS (sparse) + KNN (dense) fused with RRF. rrfK 0 = default 60. */
+  async hybridSearch(textField: string, textQuery: string, vecField: string, vec: Float32Array, k = 10, rrfK = 0): Promise<unknown> {
+    const native = this.client.nativeBindings();
+    const json = native.hybridSearch(this.client.engineHandle(), this.name, textField, textQuery, vecField, vec, k, rrfK);
+    if (json === null) throw new Error(`hybridSearch failed: ${native.lastError()}`);
     return JSON.parse(json);
   }
 }
