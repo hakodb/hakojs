@@ -115,6 +115,10 @@ export interface NativeBindings {
   queryOffset(query: Handle, offset: number): number;
   querySelectField(query: Handle, field: string): number;
   queryExecute(engine: Handle, query: Handle): string | null;
+  queryExecuteWithCancel(engine: Handle, query: Handle, cancel: Handle): string | null;
+  cancelNew(): Handle;
+  cancel(cancel: Handle): void;
+  cancelFree(cancel: Handle): void;
   queryDelete(engine: Handle, query: Handle): number;
   queryDeleteLocal(engine: Handle, query: Handle): number;
   queryPatch(engine: Handle, query: Handle, patchDoc: Handle): number;
@@ -489,6 +493,10 @@ async function createBunBindings(libPath: string): Promise<NativeBindings> {
     hk_query_offset: { args: [FFIType.ptr, FFIType.usize], returns: FFIType.i32 },
     hk_query_select_field: { args: [FFIType.ptr, FFIType.cstring], returns: FFIType.i32 },
     hk_query_execute: { args: [FFIType.ptr, FFIType.ptr], returns: FFIType.ptr },
+    hk_query_execute_with_cancel: { args: [FFIType.ptr, FFIType.ptr, FFIType.ptr], returns: FFIType.ptr },
+    hk_cancel_new: { args: [], returns: FFIType.ptr },
+    hk_cancel: { args: [FFIType.ptr], returns: FFIType.void },
+    hk_cancel_free: { args: [FFIType.ptr], returns: FFIType.void },
     hk_query_delete: { args: [FFIType.ptr, FFIType.ptr], returns: FFIType.i32 },
     hk_query_delete_local: { args: [FFIType.ptr, FFIType.ptr], returns: FFIType.i32 },
     hk_query_patch: { args: [FFIType.ptr, FFIType.ptr, FFIType.ptr], returns: FFIType.i32 },
@@ -757,6 +765,10 @@ async function createBunBindings(libPath: string): Promise<NativeBindings> {
     queryOffset: (query, offset) => symbols.hk_query_offset(query, offset),
     querySelectField: (query, field) => symbols.hk_query_select_field(query, toC(field)),
     queryExecute: (engine, query) => ptrToStringAndFree(symbols.hk_query_execute(engine, query)),
+    queryExecuteWithCancel: (engine, query, cancel) => ptrToStringAndFree(symbols.hk_query_execute_with_cancel(engine, query, cancel)),
+    cancelNew: () => symbols.hk_cancel_new(),
+    cancel: (cancel) => symbols.hk_cancel(cancel),
+    cancelFree: (cancel) => symbols.hk_cancel_free(cancel),
     queryDelete: (engine, query) => symbols.hk_query_delete(engine, query),
     queryDeleteLocal: (engine, query) => symbols.hk_query_delete_local(engine, query),
     queryPatch: (engine, query, patchDoc) => symbols.hk_query_patch(engine, query, patchDoc),
@@ -996,7 +1008,7 @@ async function createNodeBindings(libPath: string): Promise<NativeBindings> {
   // these EVERY struct-typed decl throws at bindings creation, i.e. the
   // node backend was dead on arrival (bun resolves pointers structurally
   // and never noticed). Declared once here for all present and future fns.
-  for (const t of ['HK_Array', 'HK_Batch', 'HK_CloudSync', 'HK_Config', 'HK_Doc', 'HK_Engine', 'HK_NetSyncer', 'HK_Pipeline', 'HK_Query', 'HK_RawDoc', 'HK_RawResultSet', 'HK_ResultSet', 'HK_Transaction', 'HK_ViewDoc', 'HK_Watch']) koffi.opaque(t);
+  for (const t of ['HK_Array', 'HK_Batch', 'HK_Cancel', 'HK_CloudSync', 'HK_Config', 'HK_Doc', 'HK_Engine', 'HK_NetSyncer', 'HK_Pipeline', 'HK_Query', 'HK_RawDoc', 'HK_RawResultSet', 'HK_ResultSet', 'HK_Transaction', 'HK_ViewDoc', 'HK_Watch']) koffi.opaque(t);
 
   // ponytail: owned C strings (Rust-allocated) must come back through a
   // DISPOSABLE type wired to hk_string_free — never bare char* (koffi
@@ -1147,6 +1159,10 @@ async function createNodeBindings(libPath: string): Promise<NativeBindings> {
     hk_query_offset: lib.func('int hk_query_offset(HK_Query* query, size_t offset)'),
     hk_query_select_field: lib.func('int hk_query_select_field(HK_Query* query, const char* field)'),
     hk_query_execute: lib.func('HeapStr hk_query_execute(HK_Engine* engine, const HK_Query* query)'),
+    hk_query_execute_with_cancel: lib.func('HeapStr hk_query_execute_with_cancel(HK_Engine* engine, const HK_Query* query, HK_Cancel* cancel)'),
+    hk_cancel_new: lib.func('HK_Cancel* hk_cancel_new()'),
+    hk_cancel: lib.func('void hk_cancel(HK_Cancel* cancel)'),
+    hk_cancel_free: lib.func('void hk_cancel_free(HK_Cancel* cancel)'),
     hk_query_delete: lib.func('int hk_query_delete(HK_Engine* engine, HK_Query* query)'),
     hk_query_delete_local: lib.func('int hk_query_delete_local(HK_Engine* engine, HK_Query* query)'),
     hk_query_patch: lib.func('int hk_query_patch(HK_Engine* engine, HK_Query* query, const HK_Doc* patch_doc)'),
@@ -1406,6 +1422,10 @@ async function createNodeBindings(libPath: string): Promise<NativeBindings> {
     queryOffset: (query, offset) => fn.hk_query_offset(query, offset),
     querySelectField: (query, field) => fn.hk_query_select_field(query, field),
     queryExecute: (engine, query) => ptrToStringAndFree(fn.hk_query_execute(engine, query)),
+    queryExecuteWithCancel: (engine, query, cancel) => ptrToStringAndFree(fn.hk_query_execute_with_cancel(engine, query, cancel)),
+    cancelNew: () => fn.hk_cancel_new(),
+    cancel: (cancel) => fn.hk_cancel(cancel),
+    cancelFree: (cancel) => fn.hk_cancel_free(cancel),
     queryDelete: (engine, query) => fn.hk_query_delete(engine, query),
     queryDeleteLocal: (engine, query) => fn.hk_query_delete_local(engine, query),
     queryPatch: (engine, query, patchDoc) => fn.hk_query_patch(engine, query, patchDoc),
