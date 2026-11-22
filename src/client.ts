@@ -467,10 +467,33 @@ export class HakoClient {
   private readonly native: NativeBindings;
   private readonly engine: unknown;
   private isClosed = false;
+  /** #250: reusable query handles keyed by collection. */
+  private readonly queryPool = new Map<string, unknown[]>();
 
   private constructor(native: NativeBindings, engine: unknown) {
     this.native = native;
     this.engine = engine;
+  }
+
+  /** Acquire a reset handle for `collection`, or create one on first use. */
+  acquireQuery(collection: string): unknown {
+    const pooled = this.queryPool.get(collection);
+    let handle = pooled?.pop();
+    if (!handle) {
+      handle = this.native.queryNew(collection);
+      if (!handle) throw new Error(`queryNew failed: ${this.native.lastError()}`);
+    } else {
+      ensureOk(this.native.queryReset(handle, collection), this.native, 'queryReset');
+    }
+    return handle;
+  }
+
+  /** Return a handle to the pool instead of freeing it. */
+  releaseQuery(collection: string, handle: unknown): void {
+    let pooled = this.queryPool.get(collection);
+    if (!pooled) { pooled = []; this.queryPool.set(collection, pooled); }
+    if (pooled.length < 32) pooled.push(handle);
+    else this.native.queryFree(handle);
   }
 
   static async open(path: string, options?: HakoClientOptions): Promise<HakoClient> {
@@ -1318,8 +1341,7 @@ return this;
 
   private prepareNativeQuery(): unknown {
     const native = this.client.nativeBindings();
-    const handle = native.queryNew(this.collection);
-    if (!handle) throw new Error(`queryNew failed: ${native.lastError()}`);
+    const handle = this.client.acquireQuery(this.collection);
 
     try {
       for (const filter of this.filters) {
@@ -1427,7 +1449,7 @@ return this;
 
       return handle;
     } catch (err) {
-      native.queryFree(handle);
+      this.client.releaseQuery(this.collection, handle);
       throw err;
     }
   }
@@ -1438,7 +1460,7 @@ return this;
     try {
       return parseQueryRows(native.queryExecute(this.client.engineHandle(), handle));
     } finally {
-      native.queryFree(handle);
+      this.client.releaseQuery(this.collection, handle);
     }
   }
 
@@ -1452,7 +1474,43 @@ return this;
     try {
       return parseQueryRows(native.queryExecuteJson(this.client.engineHandle(), handle));
     } finally {
-      native.queryFree(handle);
+      this.client.releaseQuery(this.collection, handle);
+    }
+  }
+
+  /**
+   * #250: typed rows without JSON materialisation. Uses the view-doc cursor
+   * so each field is pulled by name with its native type. Callers must
+   * know which fields to read (pass `fields`), which is the usual case for
+   * benchmark/UI consumers that only need a few columns.
+   */
+  async getViewRows(fields: string[]): Promise<Array<Record<string, unknown>>> {
+    const native = this.client.nativeBindings();
+    const handle = this.prepareNativeQuery();
+    const rows: Array<Record<string, unknown>> = [];
+    try {
+      native.cursorWalkView(this.client.engineHandle(), handle, (id: string, view: unknown) => {
+        const row: Record<string, unknown> = { id };
+        for (const field of fields) {
+          const has = native.viewHasField(view, field);
+          if (!has) continue;
+          // Type probe via the typed getters; string falls back to getJson-like
+          // path only if no scalar getter has the field.
+          const i = native.viewGetInt(view, field);
+          if (i !== null && i !== undefined) { row[field] = i; continue; }
+          const f = native.viewGetFloat(view, field);
+          if (f !== null && f !== undefined) { row[field] = f; continue; }
+          const b = native.viewGetBool(view, field);
+          if (b !== null && b !== undefined) { row[field] = b; continue; }
+          const str = native.viewGetStr(view, field);
+          if (str !== null && str !== undefined) row[field] = str;
+        }
+        rows.push(row);
+        return true;
+      });
+      return rows;
+    } finally {
+      this.client.releaseQuery(this.collection, handle);
     }
   }
 
@@ -1464,7 +1522,7 @@ return this;
       const json = native.queryExplain(this.client.engineHandle(), handle);
       return json ? (JSON.parse(json) as Record<string, unknown>) : null;
     } finally {
-      native.queryFree(handle);
+      this.client.releaseQuery(this.collection, handle);
     }
   }
 
@@ -1481,7 +1539,7 @@ return this;
       if (!rs) throw new Error(`queryExecuteRaw failed: ${native.lastError()}`);
       return new RawQuerySnapshot(this.client, this.collection, rs);
     } finally {
-      native.queryFree(handle);
+      this.client.releaseQuery(this.collection, handle);
     }
   }
 
@@ -1493,7 +1551,7 @@ return this;
       if (n < 0) throw new Error(`queryDelete failed: ${native.lastError()}`);
       return n;
     } finally {
-      native.queryFree(handle);
+      this.client.releaseQuery(this.collection, handle);
     }
   }
 
@@ -1506,7 +1564,7 @@ return this;
       if (n < 0) throw new Error(`queryDeleteLocal failed: ${native.lastError()}`);
       return n;
     } finally {
-      native.queryFree(handle);
+      this.client.releaseQuery(this.collection, handle);
     }
   }
 
@@ -1520,7 +1578,30 @@ return this;
       return n;
     } finally {
       native.docFree(patchDoc);
-      native.queryFree(handle);
+      this.client.releaseQuery(this.collection, handle);
+    }
+  }
+
+  /**
+   * #250: run several aggregation ops in ONE FFI round trip. Ops are
+   * `{ count: true }` or `{ sum|avg|min|max: "<field>" }`.
+   * Returns the raw engine map (keys like `count`, `sum_score`).
+   */
+  async aggregate(ops: Array<{ count?: boolean; sum?: string; avg?: string; min?: string; max?: string }>): Promise<Record<string, number>> {
+    const native = this.client.nativeBindings();
+    const handle = this.prepareNativeQuery();
+    try {
+      for (const op of ops) {
+        if (op.count) ensureOk(native.queryAggregateCount(handle), native, 'queryAggregateCount');
+        if (op.sum) ensureOk(native.queryAggregateSum(handle, op.sum), native, 'queryAggregateSum');
+        if (op.avg) ensureOk(native.queryAggregateAvg(handle, op.avg), native, 'queryAggregateAvg');
+        if (op.min) ensureOk(native.queryAggregateMin(handle, op.min), native, 'queryAggregateMin');
+        if (op.max) ensureOk(native.queryAggregateMax(handle, op.max), native, 'queryAggregateMax');
+      }
+      const json = native.queryExecuteAggregation(this.client.engineHandle(), handle);
+      return json ? (JSON.parse(json) as Record<string, number>) : {};
+    } finally {
+      this.client.releaseQuery(this.collection, handle);
     }
   }
 
@@ -1532,7 +1613,7 @@ return this;
       const json = native.queryExecuteAggregation(this.client.engineHandle(), handle);
       return json ? (JSON.parse(json).count || 0) : 0;
     } finally {
-      native.queryFree(handle);
+      this.client.releaseQuery(this.collection, handle);
     }
   }
 
@@ -1544,7 +1625,7 @@ return this;
       const json = native.queryExecuteAggregation(this.client.engineHandle(), handle);
       return json ? (JSON.parse(json)[`sum_${field}`] || 0) : 0;
     } finally {
-      native.queryFree(handle);
+      this.client.releaseQuery(this.collection, handle);
     }
   }
 
@@ -1556,7 +1637,7 @@ return this;
       const json = native.queryExecuteAggregation(this.client.engineHandle(), handle);
       return json ? (JSON.parse(json)[`avg_${field}`] || 0) : 0;
     } finally {
-      native.queryFree(handle);
+      this.client.releaseQuery(this.collection, handle);
     }
   }
 
@@ -1569,7 +1650,7 @@ return this;
       const json = native.queryExecuteAggregation(this.client.engineHandle(), handle);
       return json ? (JSON.parse(json)[`min_${field}`] ?? null) : null;
     } finally {
-      native.queryFree(handle);
+      this.client.releaseQuery(this.collection, handle);
     }
   }
 
@@ -1582,7 +1663,7 @@ return this;
       const json = native.queryExecuteAggregation(this.client.engineHandle(), handle);
       return json ? (JSON.parse(json)[`max_${field}`] ?? null) : null;
     } finally {
-      native.queryFree(handle);
+      this.client.releaseQuery(this.collection, handle);
     }
   }
 
