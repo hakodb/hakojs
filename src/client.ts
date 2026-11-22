@@ -1701,6 +1701,14 @@ export class WriteBatch {
     }
   }
 
+  /** #250: one FFI call per document via hk_batch_set_json. */
+  setJSON(docRef: DocumentReference, data: HakoDocData): WriteBatch {
+    this.ensureActive();
+    const json = JSON.stringify(data);
+    ensureOk(this.native.batchSetJSON(this.handle, docRef._collection, docRef._id, json), this.native, 'batchSetJSON');
+    return this;
+  }
+
   delete(docRef: DocumentReference): WriteBatch {
     this.ensureActive();
     ensureOk(this.native.batchDelete(this.handle, docRef._collection, docRef._id), this.native, 'batchDelete');
