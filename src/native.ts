@@ -114,11 +114,13 @@ export interface NativeBindings {
   queryLimit(query: Handle, limit: number): number;
   queryOffset(query: Handle, offset: number): number;
   querySelectField(query: Handle, field: string): number;
+  /** @deprecated Use queryExecuteEx(engine, query, null). */
   queryExecute(engine: Handle, query: Handle): string | null;
   /** Canonical executor: pass null for no cancel, or an HK_Cancel* handle. */
   queryExecuteEx(engine: Handle, query: Handle, cancel: Handle | null): string | null;
   /** #250: reset a handle in place for reuse (no alloc/free). */
   queryReset(query: Handle, collection: string): number;
+  /** @deprecated Use queryExecuteEx(engine, query, cancel). */
   queryExecuteWithCancel(engine: Handle, query: Handle, cancel: Handle): string | null;
   cancelNew(): Handle;
   cancel(cancel: Handle): void;
