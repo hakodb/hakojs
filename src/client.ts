@@ -1520,6 +1520,7 @@ return this;
   /**
    * Alias for `get({ mode: 'json' })`: JSON emitted from pinned bytes,
    * same shape as `get()`. Projections keep the projected executor's shape.
+   * @deprecated Prefer `get({ mode: 'json' })` so the materialization lane is explicit.
    */
   async getJson(): Promise<HakoDocData[]> {
     return this.get({ mode: 'json' });
