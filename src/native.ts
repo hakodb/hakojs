@@ -115,6 +115,8 @@ export interface NativeBindings {
   queryOffset(query: Handle, offset: number): number;
   querySelectField(query: Handle, field: string): number;
   queryExecute(engine: Handle, query: Handle): string | null;
+  /** Canonical executor: pass null for no cancel, or an HK_Cancel* handle. */
+  queryExecuteEx(engine: Handle, query: Handle, cancel: Handle | null): string | null;
   /** #250: reset a handle in place for reuse (no alloc/free). */
   queryReset(query: Handle, collection: string): number;
   queryExecuteWithCancel(engine: Handle, query: Handle, cancel: Handle): string | null;
@@ -497,6 +499,7 @@ async function createBunBindings(libPath: string): Promise<NativeBindings> {
     hk_query_offset: { args: [FFIType.ptr, FFIType.usize], returns: FFIType.i32 },
     hk_query_select_field: { args: [FFIType.ptr, FFIType.cstring], returns: FFIType.i32 },
     hk_query_execute: { args: [FFIType.ptr, FFIType.ptr], returns: FFIType.ptr },
+    hk_query_execute_ex: { args: [FFIType.ptr, FFIType.ptr, FFIType.ptr], returns: FFIType.ptr },
     hk_query_reset: { args: [FFIType.ptr, FFIType.cstring], returns: FFIType.i32 },
     hk_query_execute_with_cancel: { args: [FFIType.ptr, FFIType.ptr, FFIType.ptr], returns: FFIType.ptr },
     hk_cancel_new: { args: [], returns: FFIType.ptr },
@@ -776,6 +779,7 @@ async function createBunBindings(libPath: string): Promise<NativeBindings> {
     queryOffset: (query, offset) => symbols.hk_query_offset(query, offset),
     querySelectField: (query, field) => symbols.hk_query_select_field(query, toC(field)),
     queryExecute: (engine, query) => ptrToStringAndFree(symbols.hk_query_execute(engine, query)),
+    queryExecuteEx: (engine, query, cancel) => ptrToStringAndFree(symbols.hk_query_execute_ex(engine, query, cancel)),
     queryReset: (query, collection) => symbols.hk_query_reset(query, toC(collection)),
     queryExecuteWithCancel: (engine, query, cancel) => ptrToStringAndFree(symbols.hk_query_execute_with_cancel(engine, query, cancel)),
     cancelNew: () => symbols.hk_cancel_new(),
@@ -1173,6 +1177,7 @@ async function createNodeBindings(libPath: string): Promise<NativeBindings> {
     hk_query_offset: lib.func('int hk_query_offset(HK_Query* query, size_t offset)'),
     hk_query_select_field: lib.func('int hk_query_select_field(HK_Query* query, const char* field)'),
     hk_query_execute: lib.func('HeapStr hk_query_execute(HK_Engine* engine, const HK_Query* query)'),
+    hk_query_execute_ex: lib.func('HeapStr hk_query_execute_ex(HK_Engine* engine, const HK_Query* query, HK_Cancel* cancel)'),
     hk_query_reset: lib.func('int hk_query_reset(HK_Query* query, const char* collection)'),
     hk_query_execute_with_cancel: lib.func('HeapStr hk_query_execute_with_cancel(HK_Engine* engine, const HK_Query* query, HK_Cancel* cancel)'),
     hk_cancel_new: lib.func('HK_Cancel* hk_cancel_new()'),
@@ -1437,6 +1442,7 @@ async function createNodeBindings(libPath: string): Promise<NativeBindings> {
     queryOffset: (query, offset) => fn.hk_query_offset(query, offset),
     querySelectField: (query, field) => fn.hk_query_select_field(query, field),
     queryExecute: (engine, query) => ptrToStringAndFree(fn.hk_query_execute(engine, query)),
+    queryExecuteEx: (engine, query, cancel) => ptrToStringAndFree(fn.hk_query_execute_ex(engine, query, cancel)),
     queryReset: (query, collection) => fn.hk_query_reset(query, collection),
     queryExecuteWithCancel: (engine, query, cancel) => ptrToStringAndFree(fn.hk_query_execute_with_cancel(engine, query, cancel)),
     cancelNew: () => fn.hk_cancel_new(),

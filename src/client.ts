@@ -1229,6 +1229,18 @@ export class DocumentReference {
   }
 }
 
+/**
+ * Which FFI execution lane `Query.get()` uses. All modes return JS objects;
+ * they differ in materialization cost, not in output shape.
+ * - `docs` (default): canonical `hk_query_execute_ex` path.
+ * - `json`: pinned-byte JSON egress (`hk_query_execute_json`).
+ * - `handles` / `raw`: advanced native lanes, materialized to JS objects
+ *   for convenience; use `nativeBindings()` directly for zero-copy access.
+ */
+export interface QueryGetOptions {
+  mode?: 'docs' | 'json' | 'handles' | 'raw';
+}
+
 export class Query {
   private _startAfterSnapshot?: DocumentSnapshot;
   private _startAtSnapshot?: DocumentSnapshot;
@@ -1454,28 +1466,63 @@ return this;
     }
   }
 
-  async get(): Promise<HakoDocData[]> {
+  /**
+   * Execute the query. `mode` selects the FFI execution lane; all modes
+   * return the same JS shape. Default is the canonical `docs` path.
+   */
+  async get(options: QueryGetOptions = {}): Promise<HakoDocData[]> {
     const native = this.client.nativeBindings();
+    const engine = this.client.engineHandle();
     const handle = this.prepareNativeQuery();
     try {
-      return parseQueryRows(native.queryExecute(this.client.engineHandle(), handle));
+      switch (options.mode ?? 'docs') {
+        case 'json':
+          return parseQueryRows(native.queryExecuteJson(engine, handle));
+        case 'handles': {
+          const rs = native.queryExecuteToHandles(engine, handle);
+          try {
+            return parseQueryRows(native.resultSetToJson(rs));
+          } finally {
+            native.resultSetFree(rs);
+          }
+        }
+        case 'raw': {
+          const rs = native.queryExecuteRaw(engine, handle);
+          const rows: HakoDocData[] = [];
+          try {
+            const count = native.rawResultCount(rs);
+            for (let i = 0; i < count; i++) {
+              const raw = native.rawResultGet(rs, i);
+              if (!raw) continue;
+              const doc = native.rawDocToDoc(engine, raw, this.collection);
+              if (!doc) continue;
+              try {
+                const json = native.docToJson(doc);
+                if (json) rows.push(JSON.parse(json) as HakoDocData);
+              } finally {
+                native.docFree(doc);
+              }
+            }
+          } finally {
+            native.rawResultFree(rs);
+          }
+          return rows;
+        }
+        case 'docs':
+        default:
+          return parseQueryRows(native.queryExecuteEx(engine, handle, null));
+      }
     } finally {
       this.client.releaseQuery(this.collection, handle);
     }
   }
 
   /**
-   * P2 fast path (core 0.18+): rows serialized from pinned bytes, same
-   * shape as get(). Projections keep the projected executor's shape.
+   * Alias for `get({ mode: 'json' })`: JSON emitted from pinned bytes,
+   * same shape as `get()`. Projections keep the projected executor's shape.
    */
   async getJson(): Promise<HakoDocData[]> {
-    const native = this.client.nativeBindings();
-    const handle = this.prepareNativeQuery();
-    try {
-      return parseQueryRows(native.queryExecuteJson(this.client.engineHandle(), handle));
-    } finally {
-      this.client.releaseQuery(this.collection, handle);
-    }
+    return this.get({ mode: 'json' });
   }
 
   /**
