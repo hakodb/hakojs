@@ -713,6 +713,29 @@ export class HakoClient {
     return id;
   }
 
+  /**
+   * Declare multiple secondary and composite indexes in one pass. Returns the
+   * composite ids in order. Use this instead of N createIndex calls when a
+   * collection is populated before its indexes are declared.
+   */
+  async createIndexes(
+    collection: string,
+    fields: string[],
+    composites: { field: string; desc?: boolean }[][],
+  ): Promise<number[]> {
+    this.assertOpen();
+    const json = this.native.engineCreateIndexes(
+      this.engine,
+      collection,
+      JSON.stringify(fields),
+      JSON.stringify(composites.map(group =>
+        group.map(f => ({ field: f.field, dir: f.desc ? 'desc' : 'asc' })),
+      )),
+    );
+    if (!json) throw new Error(`engineCreateIndexes failed: ${this.native.lastError()}`);
+    return JSON.parse(json) as number[];
+  }
+
   async runTransaction<T>(fn: (tx: Transaction) => Promise<T>): Promise<T> {
     this.assertOpen();
     const tx = new Transaction(this.native, this.engine);
@@ -1108,6 +1131,11 @@ export class CollectionReference {
 
   async createCompositeIndex(fields: { field: string; desc?: boolean }[]): Promise<number> {
     return this.client.createCompositeIndex(this.name, fields);
+  }
+
+  /** One-pass equivalent of multiple createIndex/createCompositeIndex calls. */
+  async createIndexes(fields: string[], composites: { field: string; desc?: boolean }[][]): Promise<number[]> {
+    return this.client.createIndexes(this.name, fields, composites);
   }
 
   /** Drop indexes (v0.19.6 parity). Composite drops by the id createCompositeIndex returned. */
