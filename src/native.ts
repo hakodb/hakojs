@@ -302,6 +302,9 @@ export interface NativeBindings {
 
   // Config additions (0.12-0.16 core knobs).
   configSetGroupCommitIntervalMs(config: Handle, ms: number | bigint): void;
+  configSetCommitTriggerMode(config: Handle, mode: number): void;
+  engineSetCommitTriggerMode(engine: Handle, mode: number): void;
+  engineEffectiveConfig(engine: Handle): string | null;
   configSetPageCacheCapacity(config: Handle, capacity: number): void;
   configSetSyncExcluded(config: Handle, collectionsJson: string): number;
   configSetLazyCollections(config: Handle, collectionsJson: string): number;
@@ -579,6 +582,9 @@ async function createBunBindings(libPath: string): Promise<NativeBindings> {
     // 0.16.5 parity: F8 schemas, F5 versioned/tx, F7 explain, F3 predicates,
     // F4 pipelines, config knobs, quiescence, lazy walks and borrowed reads.
     hk_config_set_group_commit_interval_ms: { args: [FFIType.ptr, FFIType.u64], returns: FFIType.void },
+    hk_config_set_commit_trigger_mode: { args: [FFIType.ptr, FFIType.u32], returns: FFIType.void },
+    hk_engine_set_commit_trigger_mode: { args: [FFIType.ptr, FFIType.u32], returns: FFIType.void },
+    hk_engine_effective_config: { args: [FFIType.ptr], returns: FFIType.ptr },
     hk_config_set_page_cache_capacity: { args: [FFIType.ptr, FFIType.usize], returns: FFIType.void },
     hk_config_set_sync_excluded: { args: [FFIType.ptr, FFIType.cstring], returns: FFIType.i32 },
     hk_config_set_lazy_collections: { args: [FFIType.ptr, FFIType.cstring], returns: FFIType.i32 },
@@ -943,6 +949,9 @@ async function createBunBindings(libPath: string): Promise<NativeBindings> {
     pipelineExecute: (e, p) => ptrToStringAndFree(symbols.hk_pipeline_execute(e, p)),
     pipelineExecuteToHandles: (e, p) => symbols.hk_pipeline_execute_to_handles(e, p),
     configSetGroupCommitIntervalMs: (c, ms) => symbols.hk_config_set_group_commit_interval_ms(c, BigInt(ms)),
+    configSetCommitTriggerMode: (c, mode) => symbols.hk_config_set_commit_trigger_mode(c, mode),
+    engineSetCommitTriggerMode: (e, mode) => symbols.hk_engine_set_commit_trigger_mode(e, mode),
+    engineEffectiveConfig: (e) => ptrToStringAndFree(symbols.hk_engine_effective_config(e)),
     configSetPageCacheCapacity: (c, n) => symbols.hk_config_set_page_cache_capacity(c, n),
     configSetSyncExcluded: (c, json) => symbols.hk_config_set_sync_excluded(c, toC(json)),
     configSetLazyCollections: (c, json) => symbols.hk_config_set_lazy_collections(c, toC(json)),
@@ -1275,6 +1284,9 @@ async function createNodeBindings(libPath: string): Promise<NativeBindings> {
     // 0.16.5 parity: F8 schemas, F5 versioned/tx, F7 explain, F3 predicates,
     // F4 pipelines, config knobs, quiescence, lazy walks and borrowed reads.
     hk_config_set_group_commit_interval_ms: lib.func('void hk_config_set_group_commit_interval_ms(HK_Config* config, uint64_t ms)'),
+    hk_config_set_commit_trigger_mode: lib.func('void hk_config_set_commit_trigger_mode(HK_Config* config, uint32_t mode)'),
+    hk_engine_set_commit_trigger_mode: lib.func('void hk_engine_set_commit_trigger_mode(HK_Engine* engine, uint32_t mode)'),
+    hk_engine_effective_config: lib.func('HeapStr hk_engine_effective_config(HK_Engine* engine)'),
     hk_config_set_page_cache_capacity: lib.func('void hk_config_set_page_cache_capacity(HK_Config* config, size_t capacity)'),
     hk_config_set_sync_excluded: lib.func('int hk_config_set_sync_excluded(HK_Config* config, const char* collections_json)'),
     hk_config_set_lazy_collections: lib.func('int hk_config_set_lazy_collections(HK_Config* config, const char* collections_json)'),
@@ -1608,6 +1620,9 @@ async function createNodeBindings(libPath: string): Promise<NativeBindings> {
     pipelineExecute: (e, p) => ptrToStringAndFree(fn.hk_pipeline_execute(e, p)),
     pipelineExecuteToHandles: (e, p) => fn.hk_pipeline_execute_to_handles(e, p),
     configSetGroupCommitIntervalMs: (c, ms) => fn.hk_config_set_group_commit_interval_ms(c, ms),
+    configSetCommitTriggerMode: (c, mode) => fn.hk_config_set_commit_trigger_mode(c, mode),
+    engineSetCommitTriggerMode: (e, mode) => fn.hk_engine_set_commit_trigger_mode(e, mode),
+    engineEffectiveConfig: (e) => ptrToStringAndFree(fn.hk_engine_effective_config(e)),
     configSetPageCacheCapacity: (c, n) => fn.hk_config_set_page_cache_capacity(c, n),
     configSetSyncExcluded: (c, json) => fn.hk_config_set_sync_excluded(c, json),
     configSetLazyCollections: (c, json) => fn.hk_config_set_lazy_collections(c, json),
