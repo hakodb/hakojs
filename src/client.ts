@@ -1,5 +1,7 @@
 import { loadNativeBindings, type NativeBindings, type WatchCallback } from './native';
 
+let warnedGetJson = false;
+
 // 1. UPDATED: Recursive Type Definitions to support Nested Maps and Arrays
 // export type Primitive = string | number | boolean | null | Uint8Array | Date | HakoDocData | Array<any>;
 export type Primitive =
@@ -1593,6 +1595,10 @@ return this;
    * @deprecated Prefer `get({ mode: 'json' })` so the materialization lane is explicit.
    */
   async getJson(): Promise<HakoDocData[]> {
+    if (!warnedGetJson) {
+      warnedGetJson = true;
+      console.warn('deprecated: getJson() — prefer get({ mode: "json" })');
+    }
     return this.get({ mode: 'json' });
   }
 
