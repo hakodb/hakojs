@@ -41,20 +41,48 @@ def bound_symbols(path: Path) -> set[str]:
     return found - {"hk_socket_sync_"}
 
 
+def backend_sections(text: str):
+    bun = text[text.index("async function createBunBindings"):text.index("async function createNodeBindings")]
+    node = text[text.index("async function createNodeBindings"):text.index("export async function loadNativeBindings")]
+    return bun, node
+
+
+def backend_missing(text: str) -> dict:
+    bun, node = backend_sections(text)
+    bun_declared = set(re.findall(r"\b(hk_[a-z0-9_]+):\s*\{", bun))
+    bun_used = set(re.findall(r"symbols\.(hk_[a-z0-9_]+)", bun))
+    node_declared = set(re.findall(r"\b(hk_[a-z0-9_]+):\s*lib\.func", node))
+    node_declared |= set(re.findall(r"lib\.func\('[^']*\b(hk_[a-z0-9_]+)\(", node))
+    node_used = set(re.findall(r"\bfn\.(hk_[a-z0-9_]+)", node))
+    return {
+        "bun": sorted(bun_used - bun_declared),
+        "node": sorted(node_used - node_declared),
+    }
+
+
 def main() -> int:
     if not HEADER.exists() or not BINDINGS.exists():
         print(f"missing input: header={HEADER} bindings={BINDINGS}", file=sys.stderr)
         return 2
+    text = BINDINGS.read_text(encoding="utf-8")
     header = header_functions(HEADER)
     bound = bound_symbols(BINDINGS)
     missing = sorted(header - bound - ALLOW_UNBOUND)
     stale = sorted(bound - header)
+    backend = backend_missing(text)
     print(f"header functions: {len(header)}, bound symbols: {len(bound)}")
+    failed = False
     if missing:
         print("unbound and not allowlisted:", ", ".join(missing), file=sys.stderr)
+        failed = True
     if stale:
         print("bound symbols absent from header:", ", ".join(stale), file=sys.stderr)
-    if missing or stale:
+        failed = True
+    for name, symbols in backend.items():
+        if symbols:
+            print(f"{name} wrappers using undeclared symbols:", ", ".join(symbols), file=sys.stderr)
+            failed = True
+    if failed:
         return 1
     print("FFI binding parity: OK")
     return 0
