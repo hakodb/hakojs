@@ -213,6 +213,12 @@ export class HakoConfig {
     return this;
   }
 
+  /** Explicit trigger mode; changing the interval never changes it for you. */
+  setCommitTriggerMode(mode: 'legacy' | 'strict-time'): this {
+    this._native.configSetCommitTriggerMode(this._handle, mode === 'strict-time' ? 1 : 0);
+    return this;
+  }
+
   setPageCacheCapacity(capacity: number): this {
     this._native.configSetPageCacheCapacity(this._handle, capacity);
     return this;
@@ -903,6 +909,20 @@ export class HakoClient {
     return json ? JSON.parse(json) : [];
   }
 
+  /** Effective live config from the engine; safe to store in reports. */
+  async effectiveConfig(): Promise<Record<string, unknown>> {
+    this.assertOpen();
+    const json = this.native.engineEffectiveConfig(this.engine);
+    if (!json) throw new Error(`effectiveConfig failed: ${this.native.lastError()}`);
+    return JSON.parse(json) as Record<string, unknown>;
+  }
+
+  /** Live trigger-mode switch; the interval value is untouched. */
+  setCommitTriggerMode(mode: 'legacy' | 'strict-time'): void {
+    this.assertOpen();
+    this.native.engineSetCommitTriggerMode(this.engine, mode === 'strict-time' ? 1 : 0);
+  }
+
   nativeBindings(): NativeBindings { return this.native; }
   engineHandle(): unknown { return this.engine; }
 
@@ -1459,6 +1479,8 @@ return this;
         }
       }
 
+      // Cursor anchors need ORDER BY to be set first in the C ABI.
+      if (this.order) ensureOk(native.queryOrderBy(handle, this.order.field, this.order.ascending), native, 'queryOrderBy');
       if (this._startAtSnapshot?._nativeHandle) {
         ensureOk(native.queryStartAt(handle, this._startAtSnapshot._nativeHandle), native, 'queryStartAt');
       }
@@ -1481,7 +1503,6 @@ return this;
         ensureOk(native.queryWhereTraverse(handle, t.startCol, t.startId, t.direction, t.edge, t.maxDepth), native, 'queryWhereTraverse');
       }
 
-      if (this.order) ensureOk(native.queryOrderBy(handle, this.order.field, this.order.ascending), native, 'queryOrderBy');
       if (this.queryLimit !== undefined) ensureOk(native.queryLimit(handle, this.queryLimit), native, 'queryLimit');
       if (this.queryOffset !== undefined) ensureOk(native.queryOffset(handle, this.queryOffset), native, 'queryOffset');
       for (const field of this.projection) ensureOk(native.querySelectField(handle, field), native, 'querySelectField');
