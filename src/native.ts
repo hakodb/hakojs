@@ -78,6 +78,8 @@ export interface NativeBindings {
   engineInsertSubDoc(engine: Handle, col: string, id: string, subCol: string, subId: string, doc: Handle): number;
   engineGetByRef(engine: Handle, doc: Handle, fieldKey: string): Handle;
   engineCreateIndex(engine: Handle, collection: string, fieldsJson: string): number;
+  /** One-pass declaration; returns a JSON array of composite ids or null. */
+  engineCreateIndexes(engine: Handle, collection: string, fieldsJson: string, compositesJson: string): string | null;
 
   // Atomic Batch
   batchNew(): Handle;
@@ -432,6 +434,7 @@ async function createBunBindings(libPath: string): Promise<NativeBindings> {
     hk_engine_insert_subdoc: { args: [FFIType.ptr, FFIType.cstring, FFIType.cstring, FFIType.cstring, FFIType.cstring, FFIType.ptr], returns: FFIType.i32 },
     hk_engine_get_by_ref: { args: [FFIType.ptr, FFIType.ptr, FFIType.cstring], returns: FFIType.ptr },
     hk_engine_create_index: { args: [FFIType.ptr, FFIType.cstring, FFIType.cstring], returns: FFIType.u32 },
+    hk_engine_create_indexes: { args: [FFIType.ptr, FFIType.cstring, FFIType.cstring, FFIType.cstring], returns: FFIType.ptr },
     hk_engine_create_vector_index: { args: [FFIType.ptr, FFIType.cstring, FFIType.cstring, FFIType.u32, FFIType.u32], returns: FFIType.i32 },
     hk_engine_find_near: { args: [FFIType.ptr, FFIType.cstring, FFIType.cstring, FFIType.ptr, FFIType.usize, FFIType.usize], returns: FFIType.ptr },
     hk_engine_create_traverse_index: { args: [FFIType.ptr, FFIType.cstring], returns: FFIType.i32 },
@@ -741,6 +744,7 @@ async function createBunBindings(libPath: string): Promise<NativeBindings> {
     engineInsertSubDoc: (engine, col, id, subCol, subId, doc) => symbols.hk_engine_insert_subdoc(engine, toC(col), toC(id), toC(subCol), toC(subId), doc),
     engineGetByRef: (engine, doc, fieldKey) => symbols.hk_engine_get_by_ref(engine, doc, toC(fieldKey)),
     engineCreateIndex: (engine, collection, fieldsJson) => symbols.hk_engine_create_index(engine, toC(collection), toC(fieldsJson)),
+    engineCreateIndexes: (engine, collection, fieldsJson, compositesJson) => ptrToStringAndFree(symbols.hk_engine_create_indexes(engine, toC(collection), toC(fieldsJson), toC(compositesJson))),
 
     batchNew: () => symbols.hk_batch_new(),
     batchFree: (batch) => symbols.hk_batch_free(batch),
@@ -1110,6 +1114,7 @@ async function createNodeBindings(libPath: string): Promise<NativeBindings> {
     hk_engine_insert_subdoc: lib.func('int hk_engine_insert_subdoc(HK_Engine* engine, const char* col, const char* id, const char* sub_col, const char* sub_id, const HK_Doc* doc)'),
     hk_engine_get_by_ref: lib.func('HK_Doc* hk_engine_get_by_ref(HK_Engine* engine, const HK_Doc* doc, const char* field_key)'),
     hk_engine_create_index: lib.func('uint32_t hk_engine_create_index(HK_Engine* engine, const char* collection, const char* fields_json)'),
+    hk_engine_create_indexes: lib.func('HeapStr hk_engine_create_indexes(HK_Engine* engine, const char* collection, const char* fields_json, const char* composites_json)'),
     hk_engine_create_vector_index: lib.func('int hk_engine_create_vector_index(HK_Engine* engine, const char* collection, const char* field, uint32_t dim, uint32_t metric)'),
     hk_engine_find_near: lib.func('HeapStr hk_engine_find_near(HK_Engine* engine, const char* collection, const char* field, const float* vec, size_t len, size_t k)'),
     hk_engine_create_traverse_index: lib.func('int hk_engine_create_traverse_index(HK_Engine* engine, const char* collection)'),
@@ -1404,6 +1409,7 @@ async function createNodeBindings(libPath: string): Promise<NativeBindings> {
     engineInsertSubDoc: (engine, col, id, subCol, subId, doc) => fn.hk_engine_insert_subdoc(engine, col, id, subCol, subId, doc),
     engineGetByRef: (engine, doc, fieldKey) => fn.hk_engine_get_by_ref(engine, doc, fieldKey),
     engineCreateIndex: (engine, collection, fieldsJson) => fn.hk_engine_create_index(engine, collection, fieldsJson),
+    engineCreateIndexes: (engine, collection, fieldsJson, compositesJson) => ptrToStringAndFree(fn.hk_engine_create_indexes(engine, collection, fieldsJson, compositesJson)),
 
     batchNew: () => fn.hk_batch_new(),
     batchFree: (batch) => fn.hk_batch_free(batch),
