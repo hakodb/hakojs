@@ -236,6 +236,8 @@ export interface NativeBindings {
   // filtered hybrid/KNN, subgraph projection.
   engineOpenExclusive(path: string): Handle;
   engineEnsureIndexes(engine: Handle, schemaJson: string): number;
+  engineResetCollection(engine: Handle, collection: string): number;
+  queryDeleteHard(engine: Handle, query: Handle): number;
   hybridSearchFiltered(engine: Handle, collection: string, textField: string, textQuery: string, vecField: string, vec: Float32Array, k: number, rrfK: number, filtersJson: string | null): string | null;
   findNearScoredFiltered(engine: Handle, collection: string, vecField: string, vec: Float32Array, k: number, maxDistance: number, filtersJson: string | null): string | null;
   subgraphProjected(engine: Handle, collection: string, seedId: string, maxDepth: number, direction: number, edge: string | null, via: string | null, nodeField: string | null, nodeJSON: string | null, nodeCap: number, fieldsJson: string | null): string | null;
@@ -461,6 +463,8 @@ async function createBunBindings(libPath: string): Promise<NativeBindings> {
     // v0.21.0 parity (#217 wave)
     hk_engine_open_exclusive: { args: [FFIType.cstring], returns: FFIType.ptr },
     hk_engine_ensure_indexes: { args: [FFIType.ptr, FFIType.cstring], returns: FFIType.i32 },
+    hk_engine_reset_collection: { args: [FFIType.ptr, FFIType.cstring], returns: FFIType.i32 },
+    hk_query_delete_hard: { args: [FFIType.ptr, FFIType.ptr], returns: FFIType.i32 },
     hk_engine_hybrid_search_filtered: { args: [FFIType.ptr, FFIType.cstring, FFIType.cstring, FFIType.cstring, FFIType.cstring, FFIType.ptr, FFIType.usize, FFIType.usize, FFIType.usize, FFIType.cstring], returns: FFIType.ptr },
     hk_engine_find_near_scored_filtered: { args: [FFIType.ptr, FFIType.cstring, FFIType.cstring, FFIType.ptr, FFIType.usize, FFIType.usize, FFIType.f64, FFIType.cstring], returns: FFIType.ptr },
     hk_engine_subgraph_json_projected: { args: [FFIType.ptr, FFIType.cstring, FFIType.cstring, FFIType.u32, FFIType.u32, FFIType.cstring, FFIType.cstring, FFIType.cstring, FFIType.cstring, FFIType.usize, FFIType.cstring], returns: FFIType.ptr },
@@ -671,6 +675,8 @@ async function createBunBindings(libPath: string): Promise<NativeBindings> {
     // v0.21.0 parity (#217 wave)
     engineOpenExclusive: (path) => symbols.hk_engine_open_exclusive(toC(path)),
     engineEnsureIndexes: (engine, schemaJson) => symbols.hk_engine_ensure_indexes(engine, toC(schemaJson)),
+    engineResetCollection: (engine, collection) => symbols.hk_engine_reset_collection(engine, toC(collection)),
+    queryDeleteHard: (engine, query) => symbols.hk_query_delete_hard(engine, query),
     hybridSearchFiltered: (engine, collection, textField, textQuery, vecField, vec, k, rrfK, filtersJson) => ptrToStringAndFree(symbols.hk_engine_hybrid_search_filtered(engine, toC(collection), toC(textField), toC(textQuery), toC(vecField), vec, vec.length, k, rrfK, filtersJson === null ? null : toC(filtersJson))),
     findNearScoredFiltered: (engine, collection, vecField, vec, k, maxDistance, filtersJson) => ptrToStringAndFree(symbols.hk_engine_find_near_scored_filtered(engine, toC(collection), toC(vecField), vec, vec.length, k, maxDistance, filtersJson === null ? null : toC(filtersJson))),
     subgraphProjected: (engine, collection, seedId, maxDepth, direction, edge, via, nodeField, nodeJSON, nodeCap, fieldsJson) => ptrToStringAndFree(symbols.hk_engine_subgraph_json_projected(engine, toC(collection), toC(seedId), maxDepth, direction, edge === null ? null : toC(edge), via === null ? null : toC(via), nodeField === null ? null : toC(nodeField), nodeJSON === null ? null : toC(nodeJSON), nodeCap, fieldsJson === null ? null : toC(fieldsJson))),
@@ -1148,6 +1154,8 @@ async function createNodeBindings(libPath: string): Promise<NativeBindings> {
     // v0.21.0 parity (#217 wave)
     hk_engine_open_exclusive: lib.func('HK_Engine* hk_engine_open_exclusive(const char* path)'),
     hk_engine_ensure_indexes: lib.func('int hk_engine_ensure_indexes(HK_Engine* engine, const char* schema_json)'),
+    hk_engine_reset_collection: lib.func('int hk_engine_reset_collection(HK_Engine* engine, const char* collection)'),
+    hk_query_delete_hard: lib.func('int hk_query_delete_hard(HK_Engine* engine, const HK_Query* query)'),
     hk_engine_hybrid_search_filtered: lib.func('HeapStr hk_engine_hybrid_search_filtered(HK_Engine* engine, const char* collection, const char* text_field, const char* text_query, const char* vec_field, const float* vec, size_t vec_len, size_t k, size_t rrf_k, const char* filters_json)'),
     hk_engine_find_near_scored_filtered: lib.func('HeapStr hk_engine_find_near_scored_filtered(HK_Engine* engine, const char* collection, const char* field, const float* vec, size_t vec_len, size_t k, double max_distance, const char* filters_json)'),
     hk_engine_subgraph_json_projected: lib.func('HeapStr hk_engine_subgraph_json_projected(HK_Engine* engine, const char* collection, const char* seed_id, uint32_t max_depth, uint32_t direction, const char* edge, const char* via, const char* filter_field, const char* filter_json, size_t node_cap, const char* fields_json)'),
@@ -1356,6 +1364,8 @@ async function createNodeBindings(libPath: string): Promise<NativeBindings> {
     // v0.21.0 parity (#217 wave) — koffi takes null for char* directly
     engineOpenExclusive: (path) => fn.hk_engine_open_exclusive(path),
     engineEnsureIndexes: (engine, schemaJson) => fn.hk_engine_ensure_indexes(engine, schemaJson),
+    engineResetCollection: (engine, collection) => fn.hk_engine_reset_collection(engine, collection),
+    queryDeleteHard: (engine, query) => fn.hk_query_delete_hard(engine, query),
     hybridSearchFiltered: (engine, collection, textField, textQuery, vecField, vec, k, rrfK, filtersJson) => fn.hk_engine_hybrid_search_filtered(engine, collection, textField, textQuery, vecField, Buffer.from(vec.buffer, vec.byteOffset, vec.byteLength), vec.length, k, rrfK, filtersJson),
     findNearScoredFiltered: (engine, collection, vecField, vec, k, maxDistance, filtersJson) => fn.hk_engine_find_near_scored_filtered(engine, collection, vecField, Buffer.from(vec.buffer, vec.byteOffset, vec.byteLength), vec.length, k, maxDistance, filtersJson),
     subgraphProjected: (engine, collection, seedId, maxDepth, direction, edge, via, nodeField, nodeJSON, nodeCap, fieldsJson) => fn.hk_engine_subgraph_json_projected(engine, collection, seedId, maxDepth, direction, edge, via, nodeField, nodeJSON, nodeCap, fieldsJson),

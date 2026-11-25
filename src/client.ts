@@ -917,6 +917,27 @@ export class HakoClient {
     return JSON.parse(json) as Record<string, unknown>;
   }
 
+  /** Hard-clear a collection in place: no tombstones, no retention records. */
+  async resetCollection(collection: string): Promise<number> {
+    this.assertOpen();
+    const n = this.native.engineResetCollection(this.engine, collection);
+    if (n < 0) throw new Error(`resetCollection failed: ${this.native.lastError()}`);
+    return n;
+  }
+
+  /** One-pass declaration of every index family. */
+  async ensureIndexes(schema: {
+    secondary?: Array<[string, string]>;
+    composite?: Array<[string, string[]]>;
+    fts?: Array<[string, string]>;
+    vector?: Array<[string, string, number, number]>;
+    tracked?: string[];
+  }): Promise<void> {
+    this.assertOpen();
+    const ok = this.native.engineEnsureIndexes(this.engine, JSON.stringify(schema));
+    if (ok !== 0) throw new Error(`ensureIndexes failed: ${this.native.lastError()}`);
+  }
+
   /** Live trigger-mode switch; the interval value is untouched. */
   setCommitTriggerMode(mode: 'legacy' | 'strict-time'): void {
     this.assertOpen();
@@ -1646,6 +1667,19 @@ return this;
     try {
       const n = native.queryDelete(this.client.engineHandle(), handle);
       if (n < 0) throw new Error(`queryDelete failed: ${native.lastError()}`);
+      return n;
+    } finally {
+      this.client.releaseQuery(this.collection, handle);
+    }
+  }
+
+  /** Hard mass delete: no tombstone, no restore record. */
+  async deleteHard(): Promise<number> {
+    const native = this.client.nativeBindings();
+    const handle = this.prepareNativeQuery();
+    try {
+      const n = native.queryDeleteHard(this.client.engineHandle(), handle);
+      if (n < 0) throw new Error(`queryDeleteHard failed: ${native.lastError()}`);
       return n;
     } finally {
       this.client.releaseQuery(this.collection, handle);
