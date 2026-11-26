@@ -42,6 +42,18 @@ Consumers should not have to guess which execution or write entry point to use. 
 
 Do not compare a JSON-document lane with an engine-only lane and call it the same benchmark. Mark lanes without an equivalent in another engine as not applicable.
 
+### Choosing a read lane in application code
+
+| Need | API | Cost |
+|---|---|---|
+| Full documents (`HakoDocData[]`) | `query.get()` | `execute_ex` + `JSON.parse` |
+| JSON egress / wire output | `query.get({ mode: "json" })` | pinned bytes, no JS objects |
+| Only a few fields | `query.select(...).get()` | projected rows, still parsed |
+| Typed fields, no JSON | `query.getViewRows(fields)` | borrowed view; returns only requested fields |
+| Engine-only scan | `getRaw()` / `viewDoc()` | no `HakoDocData`; diagnostic, not a `get()` replacement |
+
+`getRaw()`, `viewDoc()` and the `query_*` diagnostic lanes are fast because they deliberately do not materialize documents. Their checksums are count-only or partial-field; never compare them with a SQL row lane and call it the same workload.
+
 ### In this repository
 
 - Query.get({ mode: "docs" | "json" | "handles" | "raw" }) is the single entry point; getJson() is a deprecated alias
