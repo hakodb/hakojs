@@ -927,6 +927,13 @@ export class HakoClient {
     return n;
   }
 
+  /** Drop every index family declared for a collection; documents are untouched. */
+  async dropIndexes(collection: string): Promise<void> {
+    this.assertOpen();
+    const ok = this.native.dropIndexes(this.engine, collection);
+    if (ok !== 0) throw new Error(`dropIndexes failed: ${this.native.lastError()}`);
+  }
+
   /** One-pass declaration of every index family. */
   async ensureIndexes(schema: {
     secondary?: Array<[string, string]>;

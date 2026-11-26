@@ -47,6 +47,7 @@ Do not compare a JSON-document lane with an engine-only lane and call it the sam
 - Query.get({ mode: "docs" | "json" | "handles" | "raw" }) is the single entry point; getJson() is a deprecated alias
 - queryExecuteEx is canonical; queryExecute/queryExecuteWithCancel are legacy wrappers
 - insertJSON for one document, batch().setJSON() for bulk writes
+- client.ensureIndexes(schema) declares the full index schema in one pass; client.dropIndexes(collection) removes every index family for a collection
 - HakoConfig durability and awaitQuiescent before measuring or paging
 
 ### Further reading
