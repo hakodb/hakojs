@@ -1,6 +1,11 @@
 import { loadNativeBindings, type NativeBindings, type WatchCallback } from './native';
 
-let warnedGetJson = false;
+const warnedApis = new Set<string>();
+function warnDeprecated(api: string, replacement: string): void {
+  if (warnedApis.has(api)) return;
+  warnedApis.add(api);
+  console.warn(`deprecated: ${api} — prefer ${replacement}`);
+}
 
 // 1. UPDATED: Recursive Type Definitions to support Nested Maps and Arrays
 // export type Primitive = string | number | boolean | null | Uint8Array | Date | HakoDocData | Array<any>;
@@ -122,6 +127,13 @@ export interface QueryConstraint {
 
 /** One element-relative predicate for whereElemMatch (F3). */
 export interface ElemFilter {
+  field: string;
+  op: 'eq' | 'ne' | 'gt' | 'gte' | 'lt' | 'lte' | 'match' | 'match_prefix' | 'contains' | 'starts_with' | 'in' | 'not_in' | 'array_contains' | 'array_contains_any' | 'array_all_eq';
+  value: unknown;
+}
+
+/** Filter accepted by the filtered vector/hybrid lanes (field, op, value). */
+export interface NativeFilter {
   field: string;
   op: 'eq' | 'ne' | 'gt' | 'gte' | 'lt' | 'lte' | 'match' | 'match_prefix' | 'contains' | 'starts_with' | 'in' | 'not_in' | 'array_contains' | 'array_contains_any' | 'array_all_eq';
   value: unknown;
@@ -586,7 +598,9 @@ export class HakoClient {
     return this.native.engineAwaitQuiescent(this.engine, timeoutMs);
   }
 
+  /** @deprecated Prefer `effectiveConfig().quiescence`. */
   async quiescenceStatus(): Promise<Record<string, unknown> | null> {
+    warnDeprecated('quiescenceStatus()', 'client.effectiveConfig().quiescence');
     this.assertOpen();
     const json = this.native.engineQuiescenceStatus(this.engine);
     return json ? (JSON.parse(json) as Record<string, unknown>) : null;
@@ -651,7 +665,9 @@ export class HakoClient {
     return new CloudSync(this.native, handle);
   }
 
+  /** @deprecated Prefer `effectiveConfig().quiescence.indexes_ready`. */
   isIndexesReady(): boolean {
+    warnDeprecated('isIndexesReady()', 'client.effectiveConfig().quiescence.indexes_ready');
     this.assertOpen();
     return this.native.engineIsIndexesReady(this.engine);
   }
@@ -661,7 +677,9 @@ export class HakoClient {
     ensureOk(this.native.engineCompact(this.engine), this.native, 'engineCompact');
   }
 
+  /** @deprecated Prefer `effectiveConfig().stats`. */
   async getStats(): Promise<Record<string, unknown>> {
+    warnDeprecated('getStats()', 'client.effectiveConfig().stats');
     this.assertOpen();
     const raw = this.native.engineGetStats(this.engine);
     return raw ? JSON.parse(raw) : {};
@@ -714,7 +732,9 @@ export class HakoClient {
     return new DocumentSnapshot(fieldKey, true, parseDocJson(json));
   }
 
+  /** @deprecated Prefer `ensureIndexes({ composite: [[collection, fields]] })`. */
   async createCompositeIndex(collection: string, fields: { field: string; desc?: boolean }[]): Promise<number> {
+    warnDeprecated('client.createCompositeIndex()', 'client.ensureIndexes()');
     this.assertOpen();
     const id = this.native.engineCreateIndex(this.engine, collection, JSON.stringify(fields.map(f => ({ field: f.field, desc: !!f.desc }))));
     if (id === 0) throw new Error(`engineCreateIndex failed: ${this.native.lastError()}`);
@@ -726,11 +746,13 @@ export class HakoClient {
    * composite ids in order. Use this instead of N createIndex calls when a
    * collection is populated before its indexes are declared.
    */
+  /** @deprecated Prefer `ensureIndexes(schema)`. */
   async createIndexes(
     collection: string,
     fields: string[],
     composites: { field: string; desc?: boolean }[][],
   ): Promise<number[]> {
+    warnDeprecated('client.createIndexes()', 'client.ensureIndexes()');
     this.assertOpen();
     const json = this.native.engineCreateIndexes(
       this.engine,
@@ -1132,29 +1154,39 @@ export class CollectionReference {
     return new Query(this.client, this.name).whereTraverse(startCol, startId, direction, edge, maxDepth);
   }
 
+  /** @deprecated Prefer `client.ensureIndexes({ secondary: [[collection, field]] })`. */
   async createIndex(field: string): Promise<void> {
+    warnDeprecated('collection.createIndex()', 'client.ensureIndexes()');
     ensureOk(this.client.nativeBindings().createSimpleIndex(this.client.engineHandle(), this.name, field), this.client.nativeBindings(), 'createIndex');
   }
 
+  /** @deprecated Prefer `client.ensureIndexes({ vector: [...] })` or createVectorIndexV2 for tuned params. */
   async createVectorIndex(field: string, dim: number, metric: VectorMetric = 'cosine'): Promise<void> {
+    warnDeprecated('collection.createVectorIndex()', 'client.ensureIndexes()');
     ensureOk(this.client.nativeBindings().createVectorIndex(this.client.engineHandle(), this.name, field, dim, metric === 'l2' ? 1 : 0), this.client.nativeBindings(), 'createVectorIndex');
   }
 
-  /** KNN search: nearest-first [{id, score, doc}]. Embeddings are stored as binary LE-f32 (insert a Uint8Array of Float32 bytes). */
-  async findNear(field: string, query: number[] | Float32Array, k = 10): Promise<NearHit[]> {
+  /** KNN search: nearest-first [{id, score, doc}]. Optional filters use the canonical filtered lane; embeddings are binary LE-f32. */
+  async findNear(field: string, query: number[] | Float32Array, k = 10, filters: NativeFilter[] | null = null): Promise<NearHit[]> {
     const native = this.client.nativeBindings();
     const vec = query instanceof Float32Array ? query : Float32Array.from(query);
-    const json = native.engineFindNear(this.client.engineHandle(), this.name, field, vec, k);
+    const json = native.findNearScoredFiltered(
+      this.client.engineHandle(), this.name, field, vec, k, 0,
+      filters === null ? null : JSON.stringify(filters),
+    );
     if (json === null) throw new Error(`findNear failed: ${native.lastError()}`);
     return JSON.parse(json) as NearHit[];
   }
 
+  /** @deprecated Prefer `client.ensureIndexes({ tracked: [collection] })`. */
   async createTraverseIndex(): Promise<void> {
+    warnDeprecated('collection.createTraverseIndex()', 'client.ensureIndexes()');
     ensureOk(this.client.nativeBindings().createTraverseIndex(this.client.engineHandle(), this.name), this.client.nativeBindings(), 'createTraverseIndex');
   }
 
-  /** Graph BFS from a doc in this collection: [{collection, id, depth, doc}]. edge null = any ref field. */
+  /** @deprecated Prefer `findPathsFull()` (v4 FFI). */
   async findPaths(id: string, direction: TraverseDirection = 'outgoing', edge: string | null = null, maxDepth = 10, k = 100): Promise<PathHit[]> {
+    warnDeprecated('collection.findPaths()', 'collection.findPathsFull()');
     const native = this.client.nativeBindings();
     const dir = direction === 'incoming' ? 1 : direction === 'both' ? 2 : 0;
     const json = native.engineFindPaths(this.client.engineHandle(), this.name, id, dir, edge, maxDepth, k);
@@ -1166,8 +1198,9 @@ export class CollectionReference {
     ensureOk(this.client.nativeBindings().createEdgeIndex(this.client.engineHandle(), this.name), this.client.nativeBindings(), 'createEdgeIndex');
   }
 
-  /** Weighted shortest paths via an edge collection: cost-ordered [{collection, id, depth, cost, doc}]. */
+  /** @deprecated Prefer `shortestPathsFull()` (v4 FFI). */
   async shortestPaths(id: string, via: string, weight: string | null = null, direction: TraverseDirection = 'outgoing', edge: string | null = null, maxDepth = 10, k = 100): Promise<PathHit[]> {
+    warnDeprecated('collection.shortestPaths()', 'collection.shortestPathsFull()');
     const native = this.client.nativeBindings();
     const dir = direction === 'incoming' ? 1 : direction === 'both' ? 2 : 0;
     const json = native.engineShortestPaths(this.client.engineHandle(), this.name, id, dir, edge, via, weight, maxDepth, k);
@@ -1175,10 +1208,13 @@ export class CollectionReference {
     return JSON.parse(json) as PathHit[];
   }
 
+  /** @deprecated Prefer `client.ensureIndexes({ fts: [[collection, field]] })`. */
   async createFtsIndex(field: string): Promise<void> {
+    warnDeprecated('collection.createFtsIndex()', 'client.ensureIndexes()');
     ensureOk(this.client.nativeBindings().createFtsIndex(this.client.engineHandle(), this.name, field), this.client.nativeBindings(), 'createFtsIndex');
   }
 
+  /** @deprecated Prefer `client.ensureIndexes({ composite: [[collection, fields]] })`. */
   async createCompositeIndex(fields: { field: string; desc?: boolean }[]): Promise<number> {
     return this.client.createCompositeIndex(this.name, fields);
   }
@@ -1188,16 +1224,21 @@ export class CollectionReference {
     return this.client.createIndexes(this.name, fields, composites);
   }
 
-  /** Drop indexes (v0.19.6 parity). Composite drops by the id createCompositeIndex returned. */
+  /** @deprecated Prefer `client.dropIndexes(collection)`. */
   async dropIndex(field: string): Promise<void> {
+    warnDeprecated('collection.dropIndex()', 'client.dropIndexes()');
     ensureOk(this.client.nativeBindings().dropSimpleIndex(this.client.engineHandle(), this.name, field), this.client.nativeBindings(), 'dropIndex');
   }
 
+  /** @deprecated Prefer `client.dropIndexes(collection)`. */
   async dropVectorIndex(field: string): Promise<void> {
+    warnDeprecated('collection.dropVectorIndex()', 'client.dropIndexes()');
     ensureOk(this.client.nativeBindings().dropVectorIndex(this.client.engineHandle(), this.name, field), this.client.nativeBindings(), 'dropVectorIndex');
   }
 
+  /** @deprecated Prefer `client.dropIndexes(collection)`. */
   async dropCompositeIndex(id: number): Promise<void> {
+    warnDeprecated('collection.dropCompositeIndex()', 'client.dropIndexes()');
     ensureOk(this.client.nativeBindings().dropCompositeIndex(this.client.engineHandle(), this.name, id), this.client.nativeBindings(), 'dropCompositeIndex');
   }
 
@@ -1205,11 +1246,15 @@ export class CollectionReference {
     ensureOk(this.client.nativeBindings().dropEdgeIndex(this.client.engineHandle(), this.name), this.client.nativeBindings(), 'dropEdgeIndex');
   }
 
+  /** @deprecated Prefer `client.dropIndexes(collection)`. */
   async dropFtsIndex(field: string): Promise<void> {
+    warnDeprecated('collection.dropFtsIndex()', 'client.dropIndexes()');
     ensureOk(this.client.nativeBindings().dropFtsIndex(this.client.engineHandle(), this.name, field), this.client.nativeBindings(), 'dropFtsIndex');
   }
 
+  /** @deprecated Prefer `client.dropIndexes(collection)`. */
   async dropTraverseIndex(): Promise<void> {
+    warnDeprecated('collection.dropTraverseIndex()', 'client.dropIndexes()');
     ensureOk(this.client.nativeBindings().dropTraverseIndex(this.client.engineHandle(), this.name), this.client.nativeBindings(), 'dropTraverseIndex');
   }
 
@@ -1272,10 +1317,13 @@ export class CollectionReference {
     return JSON.parse(json);
   }
 
-  /** Hybrid retrieval: FTS (sparse) + KNN (dense) fused with RRF. rrfK 0 = default 60. */
-  async hybridSearch(textField: string, textQuery: string, vecField: string, vec: Float32Array, k = 10, rrfK = 0): Promise<unknown> {
+  /** Hybrid retrieval: FTS + KNN fused with RRF. Optional filters use the canonical filtered lane; rrfK 0 = default 60. */
+  async hybridSearch(textField: string, textQuery: string, vecField: string, vec: Float32Array, k = 10, rrfK = 0, filters: NativeFilter[] | null = null): Promise<unknown> {
     const native = this.client.nativeBindings();
-    const json = native.hybridSearch(this.client.engineHandle(), this.name, textField, textQuery, vecField, vec, k, rrfK);
+    const json = native.hybridSearchFiltered(
+      this.client.engineHandle(), this.name, textField, textQuery, vecField, vec, k, rrfK,
+      filters === null ? null : JSON.stringify(filters),
+    );
     if (json === null) throw new Error(`hybridSearch failed: ${native.lastError()}`);
     return JSON.parse(json);
   }
@@ -1602,10 +1650,7 @@ return this;
    * @deprecated Prefer `get({ mode: 'json' })` so the materialization lane is explicit.
    */
   async getJson(): Promise<HakoDocData[]> {
-    if (!warnedGetJson) {
-      warnedGetJson = true;
-      console.warn('deprecated: getJson() — prefer get({ mode: "json" })');
-    }
+    warnDeprecated('Query.getJson()', 'get({ mode: "json" })');
     return this.get({ mode: 'json' });
   }
 
