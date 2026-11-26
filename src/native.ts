@@ -223,6 +223,7 @@ export interface NativeBindings {
   dropEdgeIndex(engine: Handle, collection: string): number;
   dropFtsIndex(engine: Handle, collection: string, field: string): number;
   dropTraverseIndex(engine: Handle, collection: string): number;
+  dropIndexes(engine: Handle, collection: string): number;
   createVectorIndexV2(engine: Handle, collection: string, field: string, dim: number, metric: number, m: number, efConstruction: number, efSearch: number, binaryStage1: number): number;
   findPathsFull(engine: Handle, collection: string, id: string, direction: number, edge: string | null, via: string | null, maxDepth: number, k: number, includePath: boolean, includeVia: boolean, nodeField: string | null, nodeJSON: string | null, typeField: string | null, typeJSON: string | null, matchField: string | null, matchJSON: string | null): string | null;
   findPathsCount(engine: Handle, collection: string, id: string, direction: number, edge: string | null, maxDepth: number, k: number): bigint;
@@ -463,6 +464,7 @@ async function createBunBindings(libPath: string): Promise<NativeBindings> {
     // v0.21.0 parity (#217 wave)
     hk_engine_open_exclusive: { args: [FFIType.cstring], returns: FFIType.ptr },
     hk_engine_ensure_indexes: { args: [FFIType.ptr, FFIType.cstring], returns: FFIType.i32 },
+    hk_engine_drop_indexes: { args: [FFIType.ptr, FFIType.cstring], returns: FFIType.i32 },
     hk_engine_reset_collection: { args: [FFIType.ptr, FFIType.cstring], returns: FFIType.i32 },
     hk_query_delete_hard: { args: [FFIType.ptr, FFIType.ptr], returns: FFIType.i32 },
     hk_engine_hybrid_search_filtered: { args: [FFIType.ptr, FFIType.cstring, FFIType.cstring, FFIType.cstring, FFIType.cstring, FFIType.ptr, FFIType.usize, FFIType.usize, FFIType.usize, FFIType.cstring], returns: FFIType.ptr },
@@ -885,6 +887,7 @@ async function createBunBindings(libPath: string): Promise<NativeBindings> {
     dropEdgeIndex: (engine, collection) => symbols.hk_engine_drop_edge_index(engine, toC(collection)),
     dropFtsIndex: (engine, collection, field) => symbols.hk_engine_drop_fts_index(engine, toC(collection), toC(field)),
     dropTraverseIndex: (engine, collection) => symbols.hk_engine_drop_traverse_index(engine, toC(collection)),
+    dropIndexes: (engine, collection) => symbols.hk_engine_drop_indexes(engine, toC(collection)),
     createVectorIndexV2: (engine, collection, field, dim, metric, m, efConstruction, efSearch, binaryStage1) => symbols.hk_engine_create_vector_index_v2(engine, toC(collection), toC(field), dim, metric, m, efConstruction, efSearch, binaryStage1),
     findPathsFull: (engine, collection, id, direction, edge, via, maxDepth, k, includePath, includeVia, nodeField, nodeJSON, typeField, typeJSON, matchField, matchJSON) => ptrToStringAndFree(symbols.hk_engine_find_paths_v4(engine, toC(collection), toC(id), direction, edge === null ? null : toC(edge), via === null ? null : toC(via), maxDepth, k, includePath ? 1 : 0, includeVia ? 1 : 0, nodeField === null ? null : toC(nodeField), nodeJSON === null ? null : toC(nodeJSON), typeField === null ? null : toC(typeField), typeJSON === null ? null : toC(typeJSON), matchField === null ? null : toC(matchField), matchJSON === null ? null : toC(matchJSON))),
     findPathsCount: (engine, collection, id, direction, edge, maxDepth, k) => symbols.hk_engine_find_paths_count(engine, toC(collection), toC(id), direction, edge === null ? null : toC(edge), maxDepth, k),
@@ -1154,6 +1157,7 @@ async function createNodeBindings(libPath: string): Promise<NativeBindings> {
     // v0.21.0 parity (#217 wave)
     hk_engine_open_exclusive: lib.func('HK_Engine* hk_engine_open_exclusive(const char* path)'),
     hk_engine_ensure_indexes: lib.func('int hk_engine_ensure_indexes(HK_Engine* engine, const char* schema_json)'),
+    hk_engine_drop_indexes: lib.func('int hk_engine_drop_indexes(HK_Engine* engine, const char* collection)'),
     hk_engine_reset_collection: lib.func('int hk_engine_reset_collection(HK_Engine* engine, const char* collection)'),
     hk_query_delete_hard: lib.func('int hk_query_delete_hard(HK_Engine* engine, const HK_Query* query)'),
     hk_engine_hybrid_search_filtered: lib.func('HeapStr hk_engine_hybrid_search_filtered(HK_Engine* engine, const char* collection, const char* text_field, const char* text_query, const char* vec_field, const float* vec, size_t vec_len, size_t k, size_t rrf_k, const char* filters_json)'),
@@ -1560,6 +1564,7 @@ async function createNodeBindings(libPath: string): Promise<NativeBindings> {
     dropEdgeIndex: (engine, collection) => fn.hk_engine_drop_edge_index(engine, collection),
     dropFtsIndex: (engine, collection, field) => fn.hk_engine_drop_fts_index(engine, collection, field),
     dropTraverseIndex: (engine, collection) => fn.hk_engine_drop_traverse_index(engine, collection),
+    dropIndexes: (engine, collection) => fn.hk_engine_drop_indexes(engine, collection),
     createVectorIndexV2: (engine, collection, field, dim, metric, m, efConstruction, efSearch, binaryStage1) => fn.hk_engine_create_vector_index_v2(engine, collection, field, dim, metric, m, efConstruction, efSearch, binaryStage1),
     findPathsFull: (engine, collection, id, direction, edge, via, maxDepth, k, includePath, includeVia, nodeField, nodeJSON, typeField, typeJSON, matchField, matchJSON) => fn.hk_engine_find_paths_v4(engine, collection, id, direction, edge, via, maxDepth, k, includePath ? 1 : 0, includeVia ? 1 : 0, nodeField, nodeJSON, typeField, typeJSON, matchField, matchJSON),
     findPathsCount: (engine, collection, id, direction, edge, maxDepth, k) => fn.hk_engine_find_paths_count(engine, collection, id, direction, edge, maxDepth, k),
